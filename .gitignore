@@ -42,3 +42,16 @@ package-lock.json
 credentials.json
 quickstart.py
 token.json
+
+# claude 
+.claude
+CLAUDE.md
+CLAUDE.local.md
+
+# timeline
+timeline.mdCLAUDE.local.md
+
+# data
+*.db
+backend/data/snapshots/*
+backend/data/cache/*

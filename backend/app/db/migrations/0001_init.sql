@@ -1,0 +1,2 @@
+-- [W0-1] Initial schema. Authoritative DDL lives in PROJECT_PLAN.md §8.
+-- Paste the §8 DDL here, then keep this file as the migration of record.

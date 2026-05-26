@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+psycopg[binary]
+supabase
+praw
+google-api-python-client
+anthropic
+pyyaml
+tenacity
+structlog
+pytest

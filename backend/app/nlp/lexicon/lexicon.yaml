@@ -1,0 +1,5 @@
+# [W2-1] Proprietary phrase -> axis patterns (~200-300). VERSION every change.
+# Example:
+# - pattern: "sensitive on rock"
+#   axis: y          # soft
+#   polarity: 0.8
