@@ -43,6 +43,9 @@ credentials.json
 quickstart.py
 token.json
 
+# scaffold
+scaffold.sh
+
 # claude 
 .claude
 CLAUDE.md
