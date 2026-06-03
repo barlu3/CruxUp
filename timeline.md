@@ -18,7 +18,6 @@ Operating rules for the agent working this project:
 - Act as a rigorous, honest technical mentor. No sycophancy. Challenge flawed assumptions; explain *why* and propose a better alternative.
 - The user has climbing domain expertise. Trust shoe-specific corrections (they were right on the Drago classification and on "sensitive on rock" = soft).
 - Prioritize accuracy over agreement. Cite sources. Provide documentation-quality notes on technical decisions.
-- Math/stats/variables rendered in LaTeX. Use Mermaid for flows/architecture. Use tables for scannability.
 - **Validate the pipeline before building product surface.** The web app is the last thing built, not the first.
 
 ---
@@ -66,11 +65,11 @@ Shoes are positioned on a 2-axis plane. Coordinates normalized to $[-1, 1]$.
 
 | Shoe | Quadrant | Note |
 |---|---|---|
-| La Sportiva Solution | Q1 | Performance + stiff |
+| La Sportiva Solution | Q4 | Performance + stiff |
 | La Sportiva TC Pro | Q2 | Comfort + stiff |
-| Scarpa Drago | **Q4** | Performance + soft. **Not Q1.** Soft, aggressive boulder shoe. |
-| Scarpa Instinct VSR | Q4 | Performance + soft |
-| Evolv Defy | Q3 | Comfort + soft |
+| Scarpa Drago | **Q1** | Performance + soft. **Not Q4.** Soft, aggressive boulder shoe. |
+| Scarpa Instinct VSR | Q1 | Performance + soft. However, less soft than the Drago |
+| Evolv Defy | Q2 | Comfort + soft |
 
 ---
 
