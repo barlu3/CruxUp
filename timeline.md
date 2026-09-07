@@ -1,14 +1,15 @@
 # Climbing Shoe Recommender — Project Plan & Agent Task Spec
 
-**Version:** 2.0
-**Status:** Active. Supersedes `baseline_project_context` (v1).
-**Last updated:** 2026-05-25
+**Version:** 3.0
+**Status:** Active. Supersedes v2.0 (2026-05-25).
+**Last updated:** 2026-09-07
+**Change basis:** feasibility review of all 22 backlog tasks, P0–P4. Every reconfiguration below was reviewed and signed off; see §2.1 for the disposition table.
 
 ---
 
 ## 0. How To Use This Document (read first, agent)
 
-This is the single source of truth for the project. It replaces the v1 baseline. It encodes:
+This is the single source of truth for the project. It encodes:
 
 - Resolved product decisions (§2 Decision Log) — **do not re-litigate** without user sign-off.
 - Workstreams, the recommendation math, the data model, the eval strategy, and a task backlog with stable IDs (§5–§11).
@@ -18,7 +19,7 @@ Operating rules for the agent working this project:
 - Act as a rigorous, honest technical mentor. No sycophancy. Challenge flawed assumptions; explain *why* and propose a better alternative.
 - The user has climbing domain expertise. Trust shoe-specific corrections (they were right on the Drago classification and on "sensitive on rock" = soft).
 - Prioritize accuracy over agreement. Cite sources. Provide documentation-quality notes on technical decisions.
-- **Validate the pipeline before building product surface.** The web app is the last thing built, not the first.
+- **Ship a thin product slice before the pipeline.** This reverses v2's "validate the pipeline before building product surface." See D7 — the reversal is deliberate and reasoned, not drift.
 
 ---
 
@@ -30,9 +31,11 @@ A web application that **recommends climbing shoes** matched to a user on three 
 2. **Style/performance** — does the shoe's character match the user's discipline, terrain, and preference?
 3. **Budget** — is it within price/availability constraints?
 
-The original availability-based recommendation angle was **dropped**. The engine is powered by a **domain-specific NLP pipeline** that mines community discussion to characterize each shoe along a 2-axis performance quadrant, **calibrated** against expert review data (GearLab).
+The original availability-based recommendation angle was **dropped**. The engine is powered by a **domain-specific LLM extraction pipeline** that mines community discussion to characterize each shoe along a 2-axis performance quadrant, **calibrated** against expert review data (GearLab).
 
-**MVP input method: a questionnaire** (see §2, decision 3). The LiDAR/photo foot scan is deferred to a later phase.
+**MVP input method: a questionnaire** (see §2, D3). The LiDAR/photo foot scan is deferred to a later phase.
+
+**Terminology note.** This is *not* a RAG system, and the term should not be used for it. Nothing is retrieved at query time; there is no vector store anywhere in §8. The design is **batch LLM extraction feeding an offline aggregate**. That is the correct architecture here — recommendations must be reproducible and fast, and an LLM in the request path would make them neither.
 
 ---
 
@@ -40,10 +43,27 @@ The original availability-based recommendation angle was **dropped**. The engine
 
 | # | Decision | Rationale | Cascades |
 |---|---|---|---|
-| D1 | **LLM-extraction-first** for the NLP layer. No model training from scratch at MVP. | Zero labeled data exists. Training before labels is backwards. Distill to a small classifier only *after* LLM-bootstrapped labels accrue and cost justifies it. | `trainer.py` is **deferred** (task W2-5). `NLP.py` becomes an LLM-extraction module. |
+| D1 | **LLM-extraction-first** for the NLP layer. No model training from scratch at MVP. | Zero labeled data exists. Training before labels is backwards. Distill to a small classifier only *after* LLM-bootstrapped labels accrue and cost justifies it. | `trainer.py` is **deferred** (W2-5). `NLP.py` becomes an LLM-extraction module. |
 | D2 | **GearLab is calibration-only.** It grounds/anchors the labeling of the corpus and validates quadrant placement. It is **not** a live recommendation input and is **not** surfaced in product. | GearLab is a single expert source with structured scores — ideal ground truth, wrong as a social signal. Also ToS/copyright risk if redistributed. | Drives eval design (§9) and the GearLab→(x,y) mapping. |
 | D3 | **Foot scan deferred. MVP uses a questionnaire** to gather fit + preference inputs and produce recommendations. | Scan is high-value but high-effort. Questionnaire ships the loop now and de-risks the engine first. | Rewrites the **Fit** term (§7) to survey-derived. W4 (scan) → W4' (survey). W6 capture UI → questionnaire UI. |
-| D4 | **No image storage. Store derived measurements only.** Scan + biometric storage is a future update. | Avoids biometric/privacy legal exposure (BIPA/GDPR) at MVP. | W0-2 (biometric posture) **dropped from MVP scope**; revisit when scan returns. Survey still carries standard PII handling. |
+| D4 | **No image storage. Store derived measurements only.** Scan + biometric storage is a future update. | Avoids biometric/privacy legal exposure (BIPA/GDPR) at MVP. | W0-2 **dropped from MVP scope**; revisit when scan returns. Survey still carries standard PII handling. |
+| **D5** | **Reddit commercial access is decided before any W1 code is written.** | v2 deferred this to "before launch," which means building the whole ingest and *then* learning the data is unusable. Free tier is non-commercial; the product is commercial; standard tier starts ~$12k/yr. | New task **W0-0**, first in P0. Gates W0-3 and all of W1-full. |
+| **D6** | **Catalog seeds at 25–30 shoes, not 50–100.** | Reddit shoe discussion is a steep power law: only ~15–25 shoes will ever clear $N_{\min}$ regardless of catalog size. 100 shoes means 75 served by spec priors — an NLP veneer over a spec sheet. | W5-1 rescoped. Raises the corpus-backed fraction of the catalog from ~25% to ~65%. |
+| **D7** | **A thin product slice ships before the NLP pipeline.** 30 hand-placed shoes, survey, quadrant, ranked results, no NLP. | v2's ordering assumed the pipeline was the risky part. It isn't — batch extraction is routine. The real risks are legal source access and whether anyone wants this. Pipeline-first defers both by months. | **Reverses §0 of v2.** Restructures §12 entirely. W6-2 moves into P0/P1. |
+| **D8** | **Calibration weights are frozen before measurement, and evaluation uses LOOCV, not a holdout split.** | v2 was circular: §9.1 tuned the GearLab mapping to hit the confirmed placements, then §9.2 graded NLP against that fitted mapping. And an 80/20 split of n≈20 leaves 4 test shoes — CI on 4-sample accuracy is ~±45pp. | Rewrites §9. Adds the climber panel (W0-4a) as a second ground-truth source. |
+| **D9** | **Sizing is a soft warning, not a hard gate** — except where the brand does not make the size at all. | Downsizing convention is contested and personal. A hard gate over noisy self-reported sizing silently drops shoes that would have fit. | Rewrites §7.6. W3-2 rescoped. |
+| **D10** | **Survey fit validation is a directional check (n≈8–12), not a statistical study.** | A real claim needs 30–50 participants and weeks of recruitment. Solo and pre-launch, that is not available. | W4'-3 rescoped. Real validation waits for §9.3 post-launch data — which is why the feedback columns land in W0-1a now. |
+
+### 2.1 Review disposition (2026-09-07)
+
+| Verdict | Count | Tasks |
+|---|---|---|
+| Keep as written | 9 | W0-0, W0-5, W2-2, W2-3, W3-1, W3-4, W4'-1, W4'-2, W6-1, W6-3 |
+| Rework | 8 | W0-1, W0-4, W1-1/2/3, W2-1, W2-4, W3-2, W3-3, W6-2 |
+| Cut / rescope | 2 | W5-1, W4'-3 |
+| Defer | 3 | W0-3, W2-5, W5-2 |
+
+W5-2 was omitted from the review sheet and is dispositioned **defer** by default — at a 30-shoe hand-curated catalog, a discontinued shoe is a manual edit, not a subsystem. Revisit when the catalog grows past ~50.
 
 ---
 
@@ -61,21 +81,25 @@ Shoes are positioned on a 2-axis plane. Coordinates normalized to $[-1, 1]$.
 | Q3 | Comfort + Soft ($x<0, y>0$) | Gym, beginner, slabs, neutral shape, slip-on |
 | Q4 | Performance + Soft ($x>0, y>0$) | Bouldering, steep terrain, aggressive downturn, soft rand |
 
-**Confirmed placements (do not regress):**
+**Confirmed placements (CORRECTED in v3 — do not regress):**
 
-| Shoe | Quadrant | Note |
-|---|---|---|
-| La Sportiva Solution | Q4 | Performance + stiff |
-| La Sportiva TC Pro | Q2 | Comfort + stiff |
-| Scarpa Drago | **Q1** | Performance + soft. **Not Q4.** Soft, aggressive boulder shoe. |
-| Scarpa Instinct VSR | Q1 | Performance + soft. However, less soft than the Drago |
-| Evolv Defy | Q2 | Comfort + soft |
+| Shoe | Quadrant | v2 said | Note |
+|---|---|---|---|
+| La Sportiva Solution | **Q1** | ~~Q4~~ | Performance + stiff. Downturned, but the P3 midsole makes it stiff for a boulder shoe. |
+| La Sportiva TC Pro | **Q2** | Q2 | Comfort + stiff. Unchanged. |
+| Scarpa Drago | **Q4** | ~~Q1~~ | Performance + soft. Soft, aggressive boulder shoe. |
+| Scarpa Instinct VSR | **Q4** | ~~Q1~~ | Performance + soft, but **less soft than the Drago** — sits nearer the $y=0$ boundary. |
+| Evolv Defy | **Q3** | ~~Q2~~ | Comfort + soft. Gym/beginner shoe. |
+
+> **v2 defect, now fixed.** The v2 quadrant column contradicted §3's own axis definitions, its own per-shoe notes, and the list in §9.1 — on four of five rows. The notes and §9.1 agreed with each other, so they were the surviving reading. The Drago row was the sharpest case: it asserted "**Not Q4**" when Q4 is exactly what its own note ("performance + soft") describes. Because this table is calibration ground truth for §9.1's weight tuning, the inversion would have propagated into every downstream MAE. Fixed before W0-5 loads any labels.
 
 ---
 
-## 4. Climbing Lexicon (proprietary asset)
+## 4. Climbing Lexicon (proprietary asset — scope now conditional)
 
-The NLP layer maps **climbing-specific phrases to axis signals**, not generic polarity. Same word, different meaning in-context. Target: ~200–300 patterns, seeded manually + from GearLab prose, expanded via LLM corpus analysis.
+The lexicon maps **climbing-specific phrases to axis signals**, not generic polarity. Same word, different meaning in-context.
+
+**Target revised: 60–80 patterns, not 200–300** — and the asset is now *conditional* on W2-0 (§11). Phrase frequency in review text is Zipfian: most matched signal comes from perhaps twenty patterns, and patterns 200–300 fire on almost nothing. Author 60–80, then measure the marginal contribution of the last twenty before writing more.
 
 | Phrase | Axis signal |
 |---|---|
@@ -95,14 +119,13 @@ The NLP layer maps **climbing-specific phrases to axis signals**, not generic po
 
 | ID | Workstream | Produces | MVP status |
 |---|---|---|---|
-| **W0** | Foundations / Eval | Data model, scraping posture, eval harness, GearLab seed labels | Active (this phase) |
-| **W1** | Data & Scraping Infra | Reddit/YouTube ingest, dedup, versioned snapshots | Active after W0 |
-| **W2** | NLP / Lexicon / Extraction | Lexicon, LLM extractor, aggregation → quadrant | Active after W1 |
-| **W3** | Recommendation Engine | Fit + Style + Budget scoring, sizing map | Active after W2 |
-| **W4'** | **Questionnaire** (replaces foot scan for MVP) | Survey schema, intake UI, foot profile + target $q^*$ | Active, parallel |
-| **W5** | Catalog & Data Model | 50–100 seeded shoes, geometry/last specs, lifecycle | Active after W0-1 |
-| **W6** | Frontend / UX | Questionnaire UI, interactive quadrant, results | Last |
-| ~~W4~~ | ~~Foot scan (LiDAR/photo)~~ | — | **Deferred** (future update, §12) |
+| **W0** | Foundations / Eval | Licensing decision, data model, eval harness, GearLab seed labels | Active (this phase) |
+| **W1** | Data & Scraping Infra | Minimal collector now; full ingest after D5 resolves | W1-0 active; W1-full gated |
+| **W2** | NLP / Lexicon / Extraction | Lexicon, LLM extractor, aggregation → quadrant | After the thin slice |
+| **W3** | Recommendation Engine | Fit + Style + Budget scoring, sizing map | Partly in thin slice (W3-1) |
+| **W4'** | **Questionnaire** | Survey schema, intake UI, foot profile + target $q^*$ | In thin slice |
+| **W5** | Catalog & Data Model | **25–30** seeded shoes, geometry/last specs, lifecycle | In thin slice (W5-1) |
+| **W6** | Frontend / UX | Questionnaire UI, interactive quadrant, results | **In thin slice** (moved from last) |
 
 ---
 
@@ -110,25 +133,37 @@ The NLP layer maps **climbing-specific phrases to axis signals**, not generic po
 
 ```mermaid
 flowchart TD
-  W0_1[W0-1 Data model] --> W1[W1 Scraping]
-  W0_1 --> W5[W5 Catalog + sizing]
-  W0_3[W0-3 Scraping posture] --> W1
-  W0_4[W0-4 Eval harness] --> W0_5[W0-5 GearLab seed labels]
-  W0_1 --> W0_4
-  W1 --> W2[W2 NLP extraction]
-  W5 --> W2
-  W2 --> AGG[Quadrant aggregation]
-  W0_5 --> CAL{{Calibration: NLP vs GearLab}}
-  AGG --> CAL
-  CAL --> W3[W3 Scoring engine]
-  W5 --> W3
-  W4P[W4' Questionnaire] --> W3
-  W3 --> W6[W6 Web app]
-  W4P --> W6
-  W3 -.feedback.-> RANK[Learned ranking - future]
+  W0_0[W0-0 Licensing decision] --> W0_3[W0-3 Scraping posture]
+  W0_0 --> W1F[W1-full Ingest pipeline]
+  W1_0[W1-0 Minimal collector - starts week 1] -.corpus accrues.-> W1F
+
+  W0_1a[W0-1a Product schema] --> W5_1[W5-1 Catalog 30 shoes]
+  W0_1a --> W4P[W4' Questionnaire]
+  W5_1 --> SLICE{{Thin slice: survey -> quadrant -> results}}
+  W4P --> SLICE
+  W3_1[W3-1 Spreadsheet scoring] --> SLICE
+  SLICE --> W6[W6 Web app]
+
+  W0_1a --> W0_4[W0-4 Eval harness]
+  W0_4 --> W0_4a[W0-4a Climber panel]
+  W0_4 --> W0_5[W0-5 GearLab seed]
+  W0_4a --> CAL
+  W0_5 --> CAL{{Calibration - frozen weights, LOOCV}}
+
+  W0_1b[W0-1b Corpus schema] --> W1F
+  W1F --> W2_0[W2-0 LLM vs lexicon experiment]
+  W2_0 --> W2_1[W2-1 Lexicon - only if it wins]
+  W2_0 --> W2_2[W2-2 LLM extraction]
+  W2_2 --> W2_3[W2-3 Aggregation]
+  W2_3 --> CAL
+  CAL --> W3_3[W3-3 Scorer upgrade]
+  W3_3 --> W3_4[W3-4 Confidence]
+  W3_4 --> W6
 ```
 
-Critical path: **W0-1 → W1 → W2 → AGG → CAL → W3 → W6**. W4' (questionnaire) and W5 (catalog) run parallel and join at W3.
+**Critical path to a shippable product:** W0-1a → W5-1 → W4' → W3-1 → W6. The NLP pipeline is an *upgrade path* for shoe placement, not a precondition for shipping.
+
+**Critical path to an NLP-backed product:** W0-0 → W1-full → W2-0 → W2-2 → W2-3 → CAL → W3-3.
 
 ---
 
@@ -137,23 +172,21 @@ Critical path: **W0-1 → W1 → W2 → AGG → CAL → W3 → W6**. W4' (questi
 ### 7.1 Inputs
 
 - **Survey foot profile** $\hat{\mathbf{f}}$: categorical self-reports — width $W$, instep/volume $V$, toe shape $T \in \{\text{Egyptian, Greek, Roman}\}$, arch $A$, heel size $H$.
-- **Anchor sets:** $G$ = shoes the user reports fit *well* (brand + model + size); $B$ = shoes that fit *poorly*. **Highest-signal fit input** — lower noise than abstract self-report.
+- **Anchor sets:** $G$ = shoes the user reports fit *well* (brand + model + size); $B$ = shoes that fit *poorly*. **Highest-signal fit input** — lower noise than abstract self-report. Consider shipping fit v0 on anchors alone; every question removed from a questionnaire raises completion.
 - **Shoe last profile** $\mathbf{s}_{\text{last},j}$ from catalog (last shape, volume, toe-box geometry, gender).
-- **Shoe quadrant** $\mathbf{q}_j = (x_j, y_j)$ from NLP aggregation (§7.4).
+- **Shoe quadrant** $\mathbf{q}_j = (x_j, y_j)$ — hand-placed in the thin slice, NLP-derived after §7.4 lands.
 - **User target** $\mathbf{q}^*$ from preference questions (§7.5).
 - **Budget cap**, **size constraint**.
 
 ### 7.2 Fit score (survey-derived)
 
-Two components, blended:
-
 $$\text{Fit}_j = \lambda\,\text{Fit}^{\text{anchor}}_j + (1-\lambda)\,\text{Fit}^{\text{cat}}_j$$
 
-- $\text{Fit}^{\text{cat}}_j$ — categorical match between $\hat{\mathbf{f}}$ and $\mathbf{s}_{\text{last},j}$ (width vs last width, toe shape vs toe-box, etc.).
+- $\text{Fit}^{\text{cat}}_j$ — categorical match between $\hat{\mathbf{f}}$ and $\mathbf{s}_{\text{last},j}$.
 - $\text{Fit}^{\text{anchor}}_j$ — similarity of shoe $j$'s last family to last families in $G$ (boost) and $B$ (penalty). Stronger, lower-noise.
-- $\lambda \in [0,1]$ weights toward the anchor signal when $G \cup B \neq \varnothing$.
+- $\lambda \in [0,1]$ weights toward the anchor signal when $G \cup B \neq \varnothing$. **Set by judgment, not tuned** (D8 rationale; see §7.6).
 
-A global survey-fit confidence $c_{\text{survey}}$ (< scan confidence) discounts $\text{Fit}_j$. **Forward-compatibility:** when scan returns, it raises $c$ and adds true geometric dimensions without changing this structure.
+A global survey-fit confidence $c_{\text{survey}}$ discounts $\text{Fit}_j$. **Forward-compatibility:** when scan returns, it raises $c$ and adds true geometric dimensions without changing this structure.
 
 ### 7.3 Style score (quadrant proximity)
 
@@ -165,18 +198,25 @@ $$x_j = \frac{\sum_{m=1}^{N_j} e_m\, r_m\, a_m}{\sum_{m=1}^{N_j} e_m\, r_m}, \qq
 
 - $e_m$ = author-experience weight (mitigates popularity bias, §4).
 - $r_m$ = recency decay.
-- $a_m \in [-1,1]$ = phrase axis signal from the lexicon (§4).
-- $N_j < N_{\min}$ → spec-derived fallback placement + **low-confidence flag** (cold-start, long tail).
+- $a_m \in [-1,1]$ = phrase axis signal.
+- $N_j < N_{\min}$ → spec-derived fallback placement + **low-confidence flag**.
+
+**$N_{\min}$ must be assigned a value** — it was unspecified in v2 and is the most consequential free number in the plan, because it decides what fraction of the catalog carries real signal. Start at $N_{\min} = 25$ and publish the sensitivity curve (catalog coverage vs $N_{\min}$) as a W2-3 deliverable.
 
 ### 7.5 Target from questionnaire
 
-$\mathbf{q}^*$ is derived from preference answers: discipline (boulder/sport/trad/gym), terrain (slab/vertical/overhang/crack), experience level, comfort-vs-performance goal, stiffness preference, downsizing/pain tolerance.
+$\mathbf{q}^*$ is derived from preference answers: discipline (boulder/sport/trad/gym), terrain (slab/vertical/overhang/crack), experience level, comfort-vs-performance goal, stiffness preference, downsizing/pain tolerance. Assert that each of the four disciplines lands in the quadrant §3 associates with it.
 
-### 7.6 Combined rank (soft terms, hard gates)
+### 7.6 Combined rank (soft terms, one hard gate)
 
-$$\text{Score}_j = \big(\alpha\,\text{Fit}_j + \beta\,\text{Style}_j + \gamma\,\text{Budget}_j\big)\cdot \mathbb{1}[\text{size available}]\cdot \mathbb{1}[\text{price} \le \text{cap}]$$
+$$\text{Score}_j = \big(\alpha\,\text{Fit}_j + \beta\,\text{Style}_j + \gamma\,\text{Budget}_j\big)\cdot \mathbb{1}[\text{size exists}]\cdot \mathbb{1}[\text{price} \le \text{cap}]$$
 
-with $\alpha + \beta + \gamma = 1$, tuned on the validation set. **Sizing and budget are gates, not soft terms.**
+with $\alpha + \beta + \gamma = 1$.
+
+**Two changes from v2:**
+
+1. **Sizing is no longer a hard gate on fit** (D9). The only hard size gate is $\mathbb{1}[\text{size exists}]$ — the brand does not make that size at all. Downsizing mismatch becomes a **ranked warning** the user can relax ("runs small, most climbers size up half"), which is also better product copy than an empty result set.
+2. **$\alpha, \beta, \gamma, \lambda$ are set by judgment and documented, not tuned.** Tuning requires user-to-good-shoe pairs, which do not exist and cannot come from GearLab — GearLab grades shoes, not matches. Counting $\kappa$ and the $w$ terms, v2 proposed 7+ free parameters against ~20 data points. Externalize the weights to config; defer tuning to post-launch §9.3 data.
 
 ### 7.7 Recommendation confidence (surface to user)
 
@@ -184,47 +224,94 @@ $$C_j = g\big(c_{\text{survey}},\, N_j,\, \text{agreement}_j\big)$$
 
 where $\text{agreement}_j$ = inverse variance of $a_m$. Low corpus volume or split opinion → low $C_j$, displayed honestly.
 
+**Promoted to first-class (W3-4).** With most of the catalog served by spec priors rather than corpus signal, this is not a finishing touch — it is the mechanism that makes shipping a thin corpus honest rather than misleading. A recommendation derived from four mentions and one derived from eighty must not arrive looking identical, and the flag must survive from aggregation through to the rendered card.
+
 ---
 
 ## 8. Data Model (W0-1)
 
-Postgres via Supabase. Reference DDL (adjust types/constraints as needed).
+Postgres via Supabase. **Split into two migrations** (D5 cascade): the product schema ships now; the corpus schema waits until the source question resolves.
+
+**On Supabase specifically:** keep it, but recognize you are using it as managed Postgres — there is no auth in the MVP, no realtime, no storage (D4 forbids it). Talk to it through `psycopg` rather than the `supabase` client so the decision stays reversible.
+
+### 8.1 W0-1a — Product schema (build now)
 
 ```sql
--- Catalog
 CREATE TABLE shoe (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   brand           TEXT NOT NULL,
   model           TEXT NOT NULL,
-  version         TEXT,                 -- e.g. "Solution Comp"
-  gender          TEXT,                 -- men's / women's / unisex (last differs)
-  last_shape      TEXT,                 -- e.g. asymmetric, neutral
-  downturn        TEXT,                 -- flat / moderate / aggressive
-  stiffness_spec  TEXT,                 -- maker/spec-stated stiffness
-  closure         TEXT,                 -- lace / velcro / slipper
+  version         TEXT,
+  gender          TEXT,
+  last_shape      TEXT,
+  downturn        TEXT,
+  stiffness_spec  TEXT,
+  closure         TEXT,
   rubber          TEXT,
   msrp_usd        NUMERIC,
-  status          TEXT DEFAULT 'active',-- active / discontinued / revised
-  quadrant_x_prior NUMERIC,            -- spec-derived prior (cold-start fallback)
+  status          TEXT DEFAULT 'active',
+  quadrant_x_prior NUMERIC,            -- hand-placed in the thin slice
   quadrant_y_prior NUMERIC,
   UNIQUE (brand, model, version, gender)
 );
 
-CREATE TABLE shoe_alias (             -- for mention detection / NER
+CREATE TABLE shoe_alias (
   shoe_id UUID REFERENCES shoe(id),
   alias   TEXT NOT NULL,
   PRIMARY KEY (shoe_id, alias)
 );
 
-CREATE TABLE shoe_size_map (          -- brand sizing chaos (hard gate)
+CREATE TABLE shoe_size_map (
   shoe_id          UUID REFERENCES shoe(id),
   brand_size       TEXT,
   us_street_equiv  NUMERIC,
   downsize_note    TEXT,
+  size_exists      BOOLEAN DEFAULT TRUE,  -- the ONLY hard gate (D9)
   PRIMARY KEY (shoe_id, brand_size)
 );
 
--- Calibration ground truth (internal only; D2)
+CREATE TABLE user_survey (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  survey_token    TEXT UNIQUE NOT NULL,   -- anonymous; links follow-up to recommendation
+  foot_width      TEXT,
+  instep          TEXT,
+  toe_shape       TEXT,
+  arch            TEXT,
+  heel_fit        TEXT,
+  street_size     NUMERIC,
+  known_good_shoes JSONB,                 -- anchor set G [{brand,model,size}]
+  known_bad_shoes  JSONB,                 -- anchor set B
+  discipline      TEXT,
+  terrain         TEXT,
+  level           TEXT,
+  goal_x_target   NUMERIC,
+  goal_y_target   NUMERIC,
+  budget_cap_usd  NUMERIC,
+  created_at      TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE recommendation (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  survey_id   UUID REFERENCES user_survey(id),
+  shoe_id     UUID REFERENCES shoe(id),
+  fit_score   NUMERIC,
+  style_score NUMERIC,
+  total_score NUMERIC,
+  confidence  NUMERIC,
+  rank        INT,
+  -- §9.3 online metrics. Absent in v2; without these the eval loop is unclosable.
+  accepted        BOOLEAN,
+  satisfaction    NUMERIC,
+  returned        BOOLEAN,
+  feedback_at     TIMESTAMPTZ
+);
+```
+
+> **v2 defect, now fixed.** v2's `recommendation` had nowhere to record acceptance, satisfaction or regret, and `user_survey` carried no token to link a follow-up back to what was recommended — yet §9.3 asks for exactly those metrics. Adding the columns later is cheap; adding them after users have already been through the funnel loses that cohort permanently.
+
+### 8.2 W0-1b — Corpus schema (build after W0-0)
+
+```sql
 CREATE TABLE gearlab_label (
   shoe_id       UUID REFERENCES shoe(id),
   metric        TEXT,                  -- comfort, edging, smearing, pulling, sensitivity, crack
@@ -234,10 +321,9 @@ CREATE TABLE gearlab_label (
   PRIMARY KEY (shoe_id, metric, snapshot_date)
 );
 
--- Corpus
 CREATE TABLE corpus_snapshot (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  source      TEXT,                    -- reddit / youtube
+  source      TEXT,
   scraped_at  TIMESTAMPTZ,
   version     TEXT
 );
@@ -253,23 +339,21 @@ CREATE TABLE mention (
   created_utc  TIMESTAMPTZ
 );
 
--- LLM extraction output (D1)
 CREATE TABLE extraction (
   mention_id    UUID REFERENCES mention(id),
-  attribute     TEXT,                  -- heel/toe/width/arch/downturn/stiffness/rand
-  axis          TEXT,                  -- x or y
-  signal_value  NUMERIC,               -- a_m in [-1,1]
-  archetype     TEXT,                  -- boulderer/trad/sport/gym
-  experience    TEXT,                  -- level -> e_m weight
+  attribute     TEXT,
+  axis          TEXT,
+  signal_value  NUMERIC,
+  archetype     TEXT,
+  experience    TEXT,
   confidence    NUMERIC,
   lexicon_version TEXT
 );
 
--- Aggregated quadrant position
 CREATE TABLE shoe_axis_score (
   shoe_id        UUID REFERENCES shoe(id),
-  axis           TEXT,                 -- x or y
-  value          NUMERIC,              -- [-1,1]
+  axis           TEXT,
+  value          NUMERIC,
   n_mentions     INT,
   agreement      NUMERIC,
   confidence     NUMERIC,
@@ -278,48 +362,16 @@ CREATE TABLE shoe_axis_score (
   PRIMARY KEY (shoe_id, axis, computed_at)
 );
 
--- User (questionnaire; D3, D4 -> derived only, no images)
-CREATE TABLE user_survey (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  foot_width      TEXT,                -- narrow/medium/wide
-  instep          TEXT,                -- low/medium/high
-  toe_shape       TEXT,                -- egyptian/greek/roman
-  arch            TEXT,                -- low/medium/high
-  heel_fit        TEXT,
-  street_size     NUMERIC,
-  known_good_shoes JSONB,             -- anchor set G [{brand,model,size}]
-  known_bad_shoes  JSONB,             -- anchor set B
-  discipline      TEXT,
-  terrain         TEXT,
-  level           TEXT,
-  goal_x_target   NUMERIC,            -- q* x
-  goal_y_target   NUMERIC,            -- q* y
-  budget_cap_usd  NUMERIC,
-  created_at      TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE TABLE recommendation (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  survey_id   UUID REFERENCES user_survey(id),
-  shoe_id     UUID REFERENCES shoe(id),
-  fit_score   NUMERIC,
-  style_score NUMERIC,
-  total_score NUMERIC,
-  confidence  NUMERIC,
-  rank        INT
-);
-
--- Versioned proprietary asset
 CREATE TABLE lexicon (
   id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   pattern  TEXT,
   axis     TEXT,
-  polarity NUMERIC,                    -- a contribution in [-1,1]
+  polarity NUMERIC,
   version  TEXT
 );
 ```
 
-**Versioning principle:** corpus snapshots, lexicon, and axis scores are all versioned so any quadrant placement is reproducible. Shoes are revised/discontinued — track lifecycle via `shoe.status` + `version`.
+**Versioning principle:** corpus snapshots, lexicon, and axis scores are all versioned so any quadrant placement is reproducible.
 
 ---
 
@@ -335,134 +387,182 @@ $$x^{\text{GL}} = \tanh\!\big(\kappa\,[\,w_E E + w_P P - w_C C\,]\big) \quad (\t
 
 $$y^{\text{GL}} = \tanh\!\big(\kappa\,[\,w_{Sm} Sm + w_{Se} Se - w_E E\,]\big) \quad (\text{+1} = \text{soft})$$
 
-Tune weights so confirmed placements land correctly (Solution Q1, Drago Q4, TC Pro Q2, Defy Q3). Sign note: **sensitivity → soft** (consistent with "sensitive on rock" = soft).
+**Axis independence must be checked before this formula is committed.** $E$ appears in both expressions with opposite signs, which correlates $x$ and $y$ by construction — contradicting §3's claim that these are two independent dimensions. Verify that Solution (Q1) and Drago (Q4) actually resolve apart under it. If they do not, drop $E$ from the $y$ expression and re-derive.
+
+**Frozen-weight protocol (D8).** Fit $\kappa$ and the $w$ terms using domain reasoning plus the five §3 anchors **only**. Write the resulting values into this document. Then never touch them again. Every remaining GearLab shoe is an untouched test set.
+
+Sign note: **sensitivity → soft** (consistent with "sensitive on rock" = soft).
 
 ### 9.2 Offline metrics (pipeline correctness)
 
-- **Axis MAE:** $\text{MAE}_x = \frac{1}{n}\sum_j |x_j^{\text{NLP}} - x_j^{\text{GL}}|$, same for $y$. Set a pass threshold (e.g. $\le 0.2$).
-- **Quadrant agreement:** % of overlapping shoes that NLP places in the same quadrant as the GearLab mapping. Report a 4×4 confusion matrix.
+- **Axis MAE:** $\text{MAE}_x = \frac{1}{n}\sum_j |x_j^{\text{NLP}} - x_j^{\text{GL}}|$, same for $y$.
+- **Quadrant agreement:** % of overlapping shoes placed in the same quadrant, reported as a 4×4 confusion matrix **with its sample size stated**.
 
-### 9.3 Online metrics (recommendation quality — later)
+**Resampling: leave-one-out cross-validation, not an 80/20 split.** The calibration set is the GearLab overlap — roughly 17–27 shoes. An 80/20 split leaves 4 test shoes; the confidence interval on 4-sample accuracy is about ±45 points, which cannot pass or fail anything. LOOCV gives ~20 folds instead of 4 test points and is the right tool at this $n$.
+
+**State the pass threshold before the run, not after seeing the number.**
+
+### 9.3 The agreement ceiling (W0-4a — new)
+
+Have **two or three climbers independently place 40–60 shoes** on the quadrant. This produces:
+
+- A second ground-truth source that is not GearLab, breaking the single-source dependency.
+- **An inter-rater agreement ceiling.** Without it there is no way to know what MAE is even achievable — if two expert climbers disagree by 0.25 on average, an NLP MAE of 0.2 is at the noise floor and a threshold of 0.2 is meaningless.
+
+This is the highest-value missing piece in v2's eval design and it costs a few hours of three people's time.
+
+### 9.4 Online metrics (recommendation quality — post-launch)
 
 - Recommendation acceptance rate.
 - Self-reported fit satisfaction (post-purchase survey).
 - Return/regret rate.
 - Ranking quality (nDCG) once feedback labels exist.
 
+These are the only route to tuning $\alpha, \beta, \gamma, \lambda$ (§7.6), which is why `recommendation` carries the feedback columns from day one.
+
 ---
 
-## 10. Scraping Posture (W0-3)
+## 10. Scraping Posture (W0-3) — gated by W0-0
 
 | Source | Access path | Limit / cost | Commercial allowed? | Action |
 |---|---|---|---|---|
-| **Reddit** | PRAW + OAuth 2.0 | ~60 QPM practical via PRAW (100 QPM official cap), 10-min rolling window allows bursts; 10 QPM unauthenticated | **No** — free tier is non-commercial only | Use free tier for **prototype corpus only**. Budget commercial access before launch (≈ $0.24 / 1k calls, or standard tier from ~$12k/yr). Pushshift is dead → no historical bulk; collect forward + cache. |
-| **YouTube** | Data API v3 (metadata/search/captions) | 10k units/day default quota | Metadata yes; transcript scraping is ToS-gray and fragile | Prefer official captions where permitted or licensed transcripts. **Verify ToS** before scaling. Transcripts > comments for signal. |
-| **GearLab** | Manual / low-rate fetch | Respect robots.txt | Internal calibration only (D2) | No redistribution, no surfacing scores in product. Cache locally. |
+| **Reddit** | PRAW + OAuth 2.0 | ~60 QPM practical via PRAW (100 QPM official cap); 10 QPM unauthenticated | **No** — free tier is non-commercial only | **Decide in W0-0 before building anything.** ≈$0.24/1k calls, or standard tier from ~$12k/yr. Pushshift is dead → no historical bulk; collect forward + cache. |
+| **YouTube** | Data API v3 | 10k units/day default quota | Metadata yes; captions are harder than v2 implied | **Official captions require the video owner's OAuth**, so third-party captions are effectively unavailable through the sanctioned route. The practical path (`youtube-transcript-api`) is the unofficial one. Treat this as a weaker fallback than v2 assumed. |
+| **GearLab** | **Manual transcription** | n/a | Internal calibration only (D2) | At 17–27 shoes this is manual-entry scale, not scraping scale. Transcribe by hand — faster than writing a scraper at $n=27$ and removes a legal surface entirely. |
 
-**Implementation:** token-bucket rate limiter (sliding window), exponential backoff on 429, aggressive local caching to minimize calls. Hash author IDs; store no raw PII.
+**Implementation (when unblocked):** token-bucket rate limiter (sliding window), exponential backoff on 429, aggressive local caching. Hash author IDs; store no raw PII. The PII hashing and caching are worth keeping regardless of which source survives; the Reddit-specific quota logic is not.
 
-**Flag:** the product is commercial; Reddit's free tier explicitly forbids commercial use. This is a cost + legal line item, not an afterthought.
+**Why W1-0 starts anyway.** Pushshift is dead, so there is no historical bulk and the corpus only grows **forward in wall-clock time**. A crude collector running today beats a well-built one starting in eight weeks. W1-0 runs under prototype/non-commercial terms while W0-0 resolves what the production path is.
 
 ---
 
 ## 11. Task Backlog (stable IDs; status: TODO unless noted)
 
 ### W0 — Foundations
-| ID | Task | Deps | Notes |
-|---|---|---|---|
-| W0-1 | Implement data model (§8) in Supabase | — | Unblocks everything. Start here. |
-| ~~W0-2~~ | ~~Biometric/consent posture~~ | — | **Dropped at MVP** (D4). Revisit with scan. |
-| W0-3 | Scraping posture + rate-limiter (§10) | — | Parallelizable with W0-1. |
-| W0-4 | Eval harness + metrics + GearLab→(x,y) map (§9) | W0-1 | Define before W2/W3. |
-| W0-5 | GearLab seed: load labels + convert to (x,y) + extract seed phrases | W0-1, W0-4 | Internal-only calibration set; feeds W2-1 lexicon. |
+| ID | Task | Deps | Effort | Notes |
+|---|---|---|---|---|
+| **W0-0** | **Reddit licensing decision** | — | 0.5d | **NEW, first.** Written decision: pay, stay non-commercial and delay monetization, or drop Reddit for YouTube + forums. Gates W0-3 and W1-full. |
+| **W0-1a** | Product schema (§8.1) | — | 2–3d | Includes the §9.3 feedback columns and the anonymous survey token. Unblocks the thin slice. |
+| **W0-1b** | Corpus schema (§8.2) | W0-0 | 1d | Deferred until the source is known. |
+| W0-3 | Scraping posture + rate-limiter (§10) | W0-0 | 2–3d | **Deferred.** Size it to whichever source survives. |
+| **W0-4** | Eval harness + metrics + GearLab map (§9) | W0-1a | 1w | **Rework.** Check axis independence first; LOOCV not a split; freeze weights before measuring. |
+| **W0-4a** | **Climber panel: 2–3 raters place 40–60 shoes** | W5-1 | 3d | **NEW.** Second ground-truth source + inter-rater agreement ceiling. |
+| W0-5 | GearLab seed: load labels + convert to (x,y) + seed phrases | W0-1b, W0-4 | 2d | **Manual transcription.** Blocked on the §3 correction — now applied. |
 
 ### W1 — Scraping
-| ID | Task | Deps |
-|---|---|---|
-| W1-1 | `sources.py`: source registry, OAuth, rate-limit/backoff | W0-3 |
-| W1-2 | `compile.py`: ingest → normalize → dedup → versioned snapshot | W1-1, W0-1 |
-| W1-3 | Shoe-mention detection (alias table / NER) | W5-1 |
+| ID | Task | Deps | Effort | Notes |
+|---|---|---|---|---|
+| **W1-0** | **Minimal collector, running continuously** | — | 2d then passive | **NEW, start week 1.** Script + cron + table, prototype terms. Corpus only accrues forward. |
+| W1-full | `sources.py` + `compile.py`: registry, OAuth, ingest → normalize → dedup → versioned snapshot | W0-0, W0-1b | 2w | Replaces W1-1/W1-2. Built around whichever source survived. |
+| W1-3 | Shoe-mention detection (alias table / NER) | W5-1 | 1w | Report precision **and** recall on a hand-labeled sample of ≥100 mentions. |
 
-### W2 — NLP / Lexicon (LLM-first)
-| ID | Task | Deps |
-|---|---|---|
-| W2-1 | Lexicon v1: phrase→axis map, ~200–300 patterns (manual + GearLab seed) | W0-5 |
-| W2-2 | `NLP.py`: LLM extraction — attributes + archetype + experience, gated by lexicon | W2-1, W1-2 |
-| W2-3 | Aggregation → $(x_j, y_j)$ per §7.4 (experience + recency weighting, $N_{\min}$ gate) | W2-2 |
-| W2-4 | Calibrate vs GearLab labels (§9.2); iterate lexicon | W2-3, W0-5 |
-| W2-5 | **Deferred:** `trainer.py` distillation to small classifier — only after labels accrue (D1) | W2-4 |
+### W2 — NLP / Extraction (LLM-first)
+| ID | Task | Deps | Effort | Notes |
+|---|---|---|---|---|
+| **W2-0** | **Experiment: LLM-only vs lexicon-gated extraction** | W1-full | 0.5d | **NEW.** Score both against GearLab on the same sample. If LLM-only wins, **W2-1 is deleted.** Run this before investing in the lexicon. |
+| W2-1 | Lexicon v1: 60–80 patterns (was 200–300) | W0-5, W2-0 | 1w | **Conditional on W2-0.** Measure marginal value of the last twenty before writing more. |
+| W2-2 | `NLP.py`: LLM extraction — attributes + archetype + experience | W2-0, W1-full | 1.5w | Batch 10–20 mentions per call. Low tens of dollars at Haiku-class pricing. |
+| W2-3 | Aggregation → $(x_j, y_j)$ per §7.4 | W2-2 | 1w | **Assign $N_{\min}$ (start 25) and publish the coverage-vs-$N_{\min}$ sensitivity curve.** |
+| W2-4 | Calibrate vs GearLab (§9.2); iterate | W2-3, W0-5, W0-4a | 1w | **Frozen weights, LOOCV, threshold stated in advance.** |
+| W2-5 | **Deferred:** `trainer.py` distillation (D1) | W2-4 | — | Revisit only when per-call cost becomes material. |
 
 ### W3 — Scoring
-| ID | Task | Deps |
-|---|---|---|
-| W3-1 | Spreadsheet scoring v0 (Fit/Style/Budget, §7) | W2-4 |
-| W3-2 | Per-brand sizing map (hard gate) | W5-1 |
-| W3-3 | Code scorer; tune $\alpha,\beta,\gamma,\lambda$ on validation set | W3-1, W3-2 |
-| W3-4 | Confidence $C_j$ propagation + display contract | W3-3 |
+| ID | Task | Deps | Effort | Notes |
+|---|---|---|---|---|
+| W3-1 | Spreadsheet scoring v0 (§7) | W5-1 | 3–4d | **In the thin slice.** Sanity-check ordering with a climber before writing Python. |
+| W3-2 | Per-brand sizing map | W5-1 | 1w | **Soft warning, not a hard gate** (D9). Hard gate only on "brand doesn't make this size." |
+| W3-3 | Code scorer; weights by judgment, externalized to config | W3-1, W3-2 | 1.5w | **No tuning at MVP** — no validation set exists (§7.6). |
+| W3-4 | Confidence $C_j$ propagation + display contract | W3-3 | 4d | **Promoted** — runs alongside W3-3, not after. |
 
-### W4' — Questionnaire (replaces scan for MVP)
-| ID | Task | Deps |
-|---|---|---|
-| W4'-1 | Survey schema: fit inputs (width/instep/toe/arch/heel) + anchor shoes $G,B$ | W0-1 |
-| W4'-2 | Preference inputs → target $\mathbf{q}^*$ mapping | W0-1 |
-| W4'-3 | Validate survey fit signal vs known-good-fit anchors on real users | W4'-1, W3-1 |
+### W4' — Questionnaire
+| ID | Task | Deps | Effort | Notes |
+|---|---|---|---|---|
+| W4'-1 | Survey schema: fit inputs + anchor shoes $G,B$ | W0-1a | 1w | Best idea in the plan. Validate anchors against the catalog. Consider anchors-only for v0. |
+| W4'-2 | Preference inputs → target $\mathbf{q}^*$ | W0-1a | 3d | Pure function + fixture tests; assert discipline → quadrant. |
+| W4'-3 | **Directional** fit check, $n \approx 8$–12 | W4'-1, W3-1 | 1w | **Rescoped** (D10). Sanity-check, not validation. Real validation = §9.4 post-launch. |
 
 ### W5 — Catalog
-| ID | Task | Deps |
-|---|---|---|
-| W5-1 | Seed 50–100 shoes: brand/model/version/gender, last, downturn, stiffness, closure, rubber, MSRP, aliases, quadrant prior | W0-1 |
-| W5-2 | Lifecycle handling (discontinued/revised/version) | W5-1 |
+| ID | Task | Deps | Effort | Notes |
+|---|---|---|---|---|
+| W5-1 | Seed **25–30** shoes (was 50–100) | W0-1a | 1w | **Rescoped** (D6). Hand-placed quadrant priors. Include the five §3 anchors. |
+| W5-2 | Lifecycle handling (discontinued/revised/version) | W5-1 | — | **Deferred.** At 30 shoes a discontinued shoe is a manual edit. Revisit past ~50. |
 
-### W6 — Frontend (last)
-| ID | Task | Deps |
-|---|---|---|
-| W6-1 | Questionnaire UI (fit + preference intake) | W4'-1, W4'-2 |
-| W6-2 | Interactive quadrant (first-class element; drag/inspect shoes) | W3-3 |
-| W6-3 | Results + confidence display | W6-2, W3-4 |
+### W6 — Frontend (moved earlier)
+| ID | Task | Deps | Effort | Notes |
+|---|---|---|---|---|
+| W6-1 | Questionnaire UI | W4'-1, W4'-2 | 1–2w | **In the thin slice.** Anchor picker needs catalog autocomplete, not free text. |
+| W6-2 | Interactive quadrant | W5-1 | 1w static + 1w interactive | **Moved from second-to-last into the thin slice.** Hand-placed shoes test the product hypothesis with no corpus. |
+| W6-3 | Results + confidence display | W6-2, W3-1 | 1w | Low-confidence results visibly distinct; gated-out shoes never shown. |
 
 ---
 
-## 12. Build Sequencing / Phases
+## 12. Build Sequencing / Phases (re-baselined 2026-09-07)
+
+**Why this differs from v2.** The v2 Gantt opened 2026-06-01 and ran ~16 weeks to ~2026-09-19. Fourteen of those weeks elapsed with no implementation written. This schedule re-baselines from a standing start and reorders per D7: something shippable reaches climbers at week six, before the NLP pipeline exists.
 
 ```mermaid
 gantt
-  title Climbing Shoe Recommender — Phased Plan (questionnaire MVP)
+  title Climbing Shoe Recommender — re-baselined (thin slice first)
   dateFormat YYYY-MM-DD
   axisFormat %b-%d
-  section P0 Foundations
-  Data model (W0-1)            :p0a, 2026-06-01, 7d
-  Scraping posture (W0-3)      :p0b, 2026-06-01, 7d
-  Eval harness (W0-4)          :p0c, after p0a, 7d
-  GearLab seed labels (W0-5)   :p0d, after p0c, 7d
-  Catalog seed (W5-1)          :p0e, after p0a, 14d
-  section P1 Pipeline
-  Scraping MVP (W1)            :p1a, after p0b, 14d
-  Lexicon v1 (W2-1)            :p1b, after p0d, 14d
-  LLM extraction (W2-2)        :p1c, after p1b, 14d
-  Aggregation (W2-3)           :p1d, after p1c, 10d
-  Calibrate vs GearLab (W2-4)  :p1e, after p1d, 7d
-  section P2 Engine
-  Spreadsheet scoring (W3-1)   :p2a, after p1e, 10d
-  Sizing + code scorer (W3-3)  :p2b, after p2a, 14d
-  section P3 Survey
-  Survey schema (W4'-1/2)      :p3a, after p0a, 14d
-  Survey validation (W4'-3)    :p3b, after p2a, 14d
-  section P4 Web app
-  Questionnaire UI (W6-1)      :p4a, after p3a, 14d
-  Quadrant UI (W6-2)           :p4b, after p2b, 10d
-  Results + confidence (W6-3)  :p4c, after p4b, 10d
+
+  section P0 Decide & seed
+  Licensing decision (W0-0)        :milestone, m0, 2026-09-07, 0d
+  Minimal collector (W1-0)         :active, c0, 2026-09-08, 2d
+  Corpus accruing                  :c1, after c0, 120d
+  Product schema (W0-1a)           :p0a, 2026-09-07, 3d
+  Catalog 30 shoes (W5-1)          :p0b, after p0a, 7d
+
+  section P1 Thin slice
+  Survey schema (W4'-1/2)          :p1a, after p0b, 7d
+  Spreadsheet scoring (W3-1)       :p1b, after p1a, 4d
+  Questionnaire UI (W6-1)          :p1c, after p1b, 10d
+  Static quadrant (W6-2)           :p1d, after p1c, 5d
+  Results + confidence (W6-3)      :p1e, after p1d, 6d
+  SLICE SHIPS                      :milestone, m1, after p1e, 0d
+
+  section P2 Eval foundation
+  Eval harness (W0-4)              :p2a, after p1e, 5d
+  Climber panel (W0-4a)            :p2b, after p2a, 3d
+  GearLab seed (W0-5)              :p2c, after p2b, 2d
+
+  section P3 Pipeline
+  Corpus schema (W0-1b)            :p3a, after p2c, 1d
+  Scraping posture (W0-3)          :p3b, after p3a, 3d
+  Ingest pipeline (W1-full)        :p3c, after p3b, 10d
+  LLM vs lexicon (W2-0)            :milestone, m2, after p3c, 0d
+  Extraction (W2-2)                :p3d, after p3c, 8d
+  Aggregation (W2-3)               :p3e, after p3d, 5d
+  Calibration (W2-4)               :p3f, after p3e, 5d
+
+  section P4 Engine upgrade
+  Sizing map (W3-2)                :p4a, after p3f, 5d
+  Scorer (W3-3)                    :p4b, after p4a, 8d
+  Confidence (W3-4)                :p4c, after p4b, 4d
 ```
 
-Durations are estimates for a small team; adjust to actual velocity.
+**Milestones:**
+
+| When | Milestone |
+|---|---|
+| Week 1 | W0-0 licensing decision written; collector running |
+| **Week 6** | **Thin slice ships — 30 shoes, survey, quadrant, results, no NLP** |
+| Week 8 | Eval foundation complete, agreement ceiling known |
+| Week 12 | W2-0 verdict — lexicon kept or deleted |
+| Week 15 | Calibration reported against a frozen mapping |
+| Week 18 | NLP-backed placements replace hand placements |
+
+Durations assume a solo builder. The v2 note "estimates for a small team" no longer applies.
 
 ---
 
 ## 13. Open Items / Future Updates
 
-- **Foot scan re-introduction (post-MVP):** LiDAR via ARKit (`ARMeshAnchor`/RealityKit; **not** ARFaceAnchor/TrueDepth — that API is face-only) + ARCore ToF; photo fallback with calibration reference + MediaPipe/YOLOv8 keypoints; per-dimension confidence. Slots into §7.2 by raising $c$ and adding geometric dimensions. Re-open biometric posture (W0-2) at that point — derived measurements only, no images (D4).
-- **Learned ranking:** replace the weighted scorer once online feedback labels exist.
+- **Foot scan re-introduction (post-MVP):** LiDAR via ARKit (`ARMeshAnchor`/RealityKit; **not** ARFaceAnchor/TrueDepth — that API is face-only) + ARCore ToF; photo fallback with calibration reference + MediaPipe/YOLOv8 keypoints. Slots into §7.2 by raising $c$ and adding geometric dimensions. Re-open biometric posture at that point — derived measurements only, no images (D4).
+- **Learned ranking:** replace the weighted scorer once online feedback labels exist (§9.4).
 - **`trainer.py` distillation:** LLM → small classifier when volume/cost justify (W2-5).
-- **Cold-start / long tail:** shoes below $N_{\min}$ corpus rely on spec priors; consider expert-seeded placement for high-importance models.
+- **Catalog growth past 30:** triggers W5-2 (lifecycle) and raises the long-tail cold-start problem again.
+- **Cold-start is the majority case, not the tail.** At $N_{\min}=25$, expect roughly 15–25 of 30 shoes corpus-backed. §7.7 confidence display is what makes this honest.
 
 ---
 
@@ -470,4 +570,21 @@ Durations are estimates for a small team; adjust to actual velocity.
 
 - GearLab climbing shoe test methodology (Comfort/Smearing/Edging/Pulling metrics; multi-pitch = flat-midsole comfort): https://www.outdoorgearlab.com/topics/climbing/best-climbing-shoes/how-we-test
 - GearLab climbing shoe review (retest Nov 2025; ~17 tested / 27 compared): https://www.outdoorgearlab.com/topics/climbing/best-climbing-shoes
-- Reddit API pricing/limits 2026 (free tier 100 QPM official / ~60 via PRAW, 10-min rolling window, non-commercial only, Pushshift dead): https://octolens.com/blog/reddit-api-pricing , https://www.redditcommentscraper.com/article-reddit-api-pricing-alternative.html
+- Reddit API pricing/limits 2026 (free tier 100 QPM official / ~60 via PRAW, non-commercial only, Pushshift dead): https://octolens.com/blog/reddit-api-pricing , https://www.redditcommentscraper.com/article-reddit-api-pricing-alternative.html
+
+---
+
+## 15. Changelog
+
+**v3.0 (2026-09-07)** — feasibility review of all backlog tasks; 22 dispositions signed off.
+- Fixed the §3 quadrant table (inverted on 4 of 5 rows; was calibration ground truth).
+- Added D5–D10.
+- Split W0-1 into product/corpus schemas; added §9.3 feedback columns and survey token.
+- Added W0-0 (licensing), W0-4a (climber panel), W1-0 (collector), W2-0 (lexicon experiment).
+- Rescoped W5-1 (30 shoes), W2-1 (60–80 patterns), W4'-3 (directional check).
+- Rewrote §9: frozen weights, LOOCV, agreement ceiling, axis-independence check.
+- Sizing demoted from hard gate to warning (§7.6).
+- Reversed the build order: thin product slice before pipeline (D7). §12 re-baselined to 18 weeks from 2026-09-07.
+- Clarified that this is batch extraction, not RAG.
+
+**v2.0 (2026-05-25)** — questionnaire MVP; superseded `baseline_project_context` v1.
