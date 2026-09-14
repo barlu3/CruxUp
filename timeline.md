@@ -4,7 +4,7 @@
 **Status:** Active. Supersedes v2.0 (2026-05-25).
 **Last updated:** 2026-09-14
 **Change basis:** v3.0 was the feasibility review of all 22 backlog tasks (§2.1). v3.1 adds D11 and D12, records what has actually been built (§2.0), and folds in two findings measured from the first live collection run — the mention-attribution problem (W1-3) and the $N_{\min}$ reachability problem (W2-3).
-**Progress:** 5 of 31 tasks complete. See §2.0.
+**Progress:** 5 of 34 tasks complete (2 of the remainder are deferred). See §2.0.
 
 ---
 
@@ -61,7 +61,7 @@ The original availability-based recommendation angle was **dropped**. The engine
 
 Audited against files on disk and verified runs, not against memory.
 
-**Complete — 5 of 31 backlog tasks:**
+**Complete — 5 of 34 backlog tasks:**
 
 | Task | Evidence |
 |---|---|
