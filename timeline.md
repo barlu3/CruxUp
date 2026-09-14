@@ -1,9 +1,10 @@
 # Climbing Shoe Recommender — Project Plan & Agent Task Spec
 
-**Version:** 3.0
+**Version:** 3.1
 **Status:** Active. Supersedes v2.0 (2026-05-25).
-**Last updated:** 2026-09-07
-**Change basis:** feasibility review of all 22 backlog tasks, P0–P4. Every reconfiguration below was reviewed and signed off; see §2.1 for the disposition table.
+**Last updated:** 2026-09-14
+**Change basis:** v3.0 was the feasibility review of all 22 backlog tasks (§2.1). v3.1 adds D11 and D12, records what has actually been built (§2.0), and folds in two findings measured from the first live collection run — the mention-attribution problem (W1-3) and the $N_{\min}$ reachability problem (W2-3).
+**Progress:** 5 of 31 tasks complete. See §2.0.
 
 ---
 
@@ -47,15 +48,40 @@ The original availability-based recommendation angle was **dropped**. The engine
 | D2 | **GearLab is calibration-only.** It grounds/anchors the labeling of the corpus and validates quadrant placement. It is **not** a live recommendation input and is **not** surfaced in product. | GearLab is a single expert source with structured scores — ideal ground truth, wrong as a social signal. Also ToS/copyright risk if redistributed. | Drives eval design (§9) and the GearLab→(x,y) mapping. |
 | D3 | **Foot scan deferred. MVP uses a questionnaire** to gather fit + preference inputs and produce recommendations. | Scan is high-value but high-effort. Questionnaire ships the loop now and de-risks the engine first. | Rewrites the **Fit** term (§7) to survey-derived. W4 (scan) → W4' (survey). W6 capture UI → questionnaire UI. |
 | D4 | **No image storage. Store derived measurements only.** Scan + biometric storage is a future update. | Avoids biometric/privacy legal exposure (BIPA/GDPR) at MVP. | W0-2 **dropped from MVP scope**; revisit when scan returns. Survey still carries standard PII handling. |
-| **D5** | **Reddit commercial access is decided before any W1 code is written.** | v2 deferred this to "before launch," which means building the whole ingest and *then* learning the data is unusable. Free tier is non-commercial; the product is commercial; standard tier starts ~$12k/yr. | New task **W0-0**, first in P0. Gates W0-3 and all of W1-full. |
+| **D5** | **Reddit commercial access is decided before any W1 code is written.** | v2 deferred this to "before launch," which means building the whole ingest and *then* learning the data is unusable. Free tier is non-commercial; the product is commercial. ~~standard tier starts ~$12k/yr~~ — **that figure was wrong; see D11.** | New task **W0-0**, first in P0 — **resolved 2026-09-13**. Gates W0-3 and all of W1-full. |
 | ~~D6~~ | ~~Catalog seeds at 25–30 shoes, not 50–100.~~ | **SUPERSEDED by D12 (2026-09-13).** The reasoning conflated corpus coverage with catalog size. Kept here so the error stays auditable rather than silently rewritten. | — |
 | **D12** | **Catalog targets ~100 shoes. The 30 hand-placed shoes become the calibration set for a spec-derived prior function, not the catalog itself.** | D6 was wrong. Fit (§7.2) and Budget (§7.6) never touch the corpus, so trimming the catalog degraded them for no NLP-related reason — and §7.7 confidence already exists to make prior-derived placements honest. Measured on the 30-shoe catalog: a typical user saw **3–4 candidates** after the size and budget gates; one with an uncommon size or tight budget saw **fewer than two**. The real constraint was that hand-placing needs a *judgement call* per shoe — which a spec→prior model removes at **LOOCV MAE x 0.139 / y 0.113, 87% quadrant agreement**, better than the ≤0.2 §9.2 demands of the NLP pipeline itself. | W5-1 re-expanded to ~100. New `priors.py`. Adds `prior_source` provenance (corpus > hand > spec) feeding §7.7. MSRP sourcing now scales with catalog size and becomes the real budget item. |
 | **D7** | **A thin product slice ships before the NLP pipeline.** 30 hand-placed shoes, survey, quadrant, ranked results, no NLP. | v2's ordering assumed the pipeline was the risky part. It isn't — batch extraction is routine. The real risks are legal source access and whether anyone wants this. Pipeline-first defers both by months. | **Reverses §0 of v2.** Restructures §12 entirely. W6-2 moves into P0/P1. |
 | **D8** | **Calibration weights are frozen before measurement, and evaluation uses LOOCV, not a holdout split.** | v2 was circular: §9.1 tuned the GearLab mapping to hit the confirmed placements, then §9.2 graded NLP against that fitted mapping. And an 80/20 split of n≈20 leaves 4 test shoes — CI on 4-sample accuracy is ~±45pp. | Rewrites §9. Adds the climber panel (W0-4a) as a second ground-truth source. |
 | **D9** | **Sizing is a soft warning, not a hard gate** — except where the brand does not make the size at all. | Downsizing convention is contested and personal. A hard gate over noisy self-reported sizing silently drops shoes that would have fit. | Rewrites §7.6. W3-2 rescoped. |
 | **D10** | **Survey fit validation is a directional check (n≈8–12), not a statistical study.** | A real claim needs 30–50 participants and weeks of recruitment. Solo and pre-launch, that is not available. | W4'-3 rescoped. Real validation waits for §9.3 post-launch data — which is why the feedback columns land in W0-1a now. |
-
 | **D11** | **Reddit is not load-bearing. Apply for free non-commercial access now; build the corpus on YouTube and forums.** | Self-service app registration is closed — every OAuth client needs manual approval, reported at 2-4 weeks with a real chance of silent rejection. Cost turned out not to be the obstacle (metered access is about $3.60 at this volume); *access latency and uncertainty* are. | Resolves W0-0. Splits W1-0 into 0a (apply), 0b (YouTube/forums collector), 0c (Reddit adapter on approval). Forces a source-agnostic collector interface. See §10.0. |
+
+### 2.0 Progress (audited 2026-09-14)
+
+Audited against files on disk and verified runs, not against memory.
+
+**Complete — 5 of 31 backlog tasks:**
+
+| Task | Evidence |
+|---|---|
+| W0-0 licensing decision | D11 + §10.0. Two v3 assumptions corrected. |
+| W0-1a product schema | `0001_init.sql`. Applies / reverses / re-applies clean on PG 16.15; 10 constraint probes pass. |
+| W1-0b collector + YouTube adapter | `collector.py`, 15 tests. **379 live documents, 41 videos.** |
+| W5-1a hand-place 30 shoes | `shoes.yaml`, seeded to Postgres: 30 shoes, 71 aliases. |
+| W5-1b spec→prior model | `priors.py`. LOOCV MAE x 0.139 / y 0.113, 87% quadrant agreement. |
+
+**Built but not on the backlog** — support the above, worth naming so they are not re-scoped later:
+`validate.py` (catalogue invariants + the `--require-msrp` budget-gate guard), `config.py` (`.env` loading), `SETUP.md` (local setup, verified end to end), 54 tests.
+
+**Two measured findings that change downstream design:**
+
+1. **W1-3 needs redesigning.** Only 18% of collected comments name a shoe; 44% say "these/them/it". Alias matching would capture under a fifth of the corpus. Attribute by video subject first.
+2. **$N_{\min}=25$ may be unreachable.** 0/30 shoes clear it at 379 documents; top 5 hold 64% of mentions. The power law is steeper than §4 assumed. Query generation is currently anchor-biased, which partly explains it — per-shoe queries are the first fix.
+
+**Not started:** everything else. The thin slice (D7) has its data layer but no survey, scorer or UI. `backend/app/api/`, `recommend/`, `nlp/`, `eval/` and all of `src/app/` are still stubs.
+
+**Nearest unblocks:** W1-0a is one hour of paperwork gating a 2–4 week queue. W5-1c/W5-1d (expand to ~100 shoes, source MSRPs) are mechanical and gate the §7.6 budget gate.
 
 ### 2.1 Review disposition (2026-09-07)
 
@@ -490,20 +516,23 @@ The collector must therefore be written source-agnostic from the first commit �
 ### W0 — Foundations
 | ID | Task | Deps | Effort | Notes |
 |---|---|---|---|---|
-| **W0-0** | **Reddit licensing decision** | — | 0.5d | **NEW, first.** Written decision: pay, stay non-commercial and delay monetization, or drop Reddit for YouTube + forums. Gates W0-3 and W1-full. |
-| **W0-1a** | Product schema (§8.1) | — | 2–3d | Includes the §9.3 feedback columns and the anonymous survey token. Unblocks the thin slice. |
+| ~~W0-0~~ | ~~Reddit licensing decision~~ | — | 0.5d | **DONE 2026-09-13.** Resolved as D11/§10.0: free non-commercial only, YouTube+forums as corpus, no ads. Research corrected two v3 assumptions — bundled tier is ~$12k/**month** not /year, and self-service registration is closed (2–4 week manual approval). |
+| ~~W0-1a~~ | ~~Product schema (§8.1)~~ | — | 2–3d | **DONE 2026-09-13.** `0001_init.sql` + `0001_init_down.sql`. Verified on PostgreSQL 16.15: applies clean, reverses to 0 tables, re-applies. 10 probes confirm constraints reject bad data. Includes §9.3 feedback columns, anonymous `survey_token`, and `scorer_version`. |
 | **W0-1b** | Corpus schema (§8.2) | W0-0 | 1d | Deferred until the source is known. |
 | W0-3 | Scraping posture + rate-limiter (§10) | W0-0 | 2–3d | **Deferred.** Size it to whichever source survives. |
 | **W0-4** | Eval harness + metrics + GearLab map (§9) | W0-1a | 1w | **Rework.** Check axis independence first; LOOCV not a split; freeze weights before measuring. |
-| **W0-4a** | **Climber panel: 2–3 raters place 40–60 shoes** | W5-1 | 3d | **NEW.** Second ground-truth source + inter-rater agreement ceiling. |
+| **W0-4a** | **Climber panel: 2–3 raters place 40–60 shoes** | W5-1a | 3d | **NEW.** Second ground-truth source + inter-rater agreement ceiling. |
 | W0-5 | GearLab seed: load labels + convert to (x,y) + seed phrases | W0-1b, W0-4 | 2d | **Manual transcription.** Blocked on the §3 correction — now applied. |
 
 ### W1 — Scraping
 | ID | Task | Deps | Effort | Notes |
 |---|---|---|---|---|
-| **W1-0** | **Minimal collector, running continuously** | — | 2d then passive | **NEW, start week 1.** Script + cron + table, prototype terms. Corpus only accrues forward. |
+| **W1-0a** | **Submit Reddit free non-commercial application** | W0-0 | 1h | **NOT STARTED.** Paperwork, not code — and it is on the critical path: the 2–4 week approval queue only starts when it is submitted. Nothing downstream depends on it (D11), but every day unsubmitted is a day added to W1-0c. |
+| ~~W1-0b~~ | ~~Source-agnostic collector + YouTube adapter~~ | — | 2d then passive | **DONE 2026-09-13.** `collector.py` + 15 tests. **Live-verified: 379 documents from 41 videos**, ~1,050 of 10,000 daily quota. Idempotent across restarts (re-run added only genuinely new docs). Authors SHA-256 salted; display names never stored. |
+| **W1-0b′** | Forum adapter (Mountain Project, UKClimbing) | W1-0b | 3d | **NOT STARTED — deliberately.** §10.0 requires checking `robots.txt` and terms for each site first. Interface and store already exist; only `collect()` is missing. |
+| **W1-0c** | Reddit adapter | W1-0a approval | 2d | **BLOCKED** on approval. `RedditSource.available()` returns False until credentials exist, so nothing breaks if it never lands. |
 | W1-full | `sources.py` + `compile.py`: registry, OAuth, ingest → normalize → dedup → versioned snapshot | W0-0, W0-1b | 2w | Replaces W1-1/W1-2. Built around whichever source survived. |
-| W1-3 | Shoe-mention detection (alias table / NER) | W5-1 | 1w | Report precision **and** recall on a hand-labeled sample of ≥100 mentions. |
+| W1-3 | Shoe-mention detection | W5-1a | 1w | **REDESIGN REQUIRED — measured 2026-09-13.** Only **18%** of collected comments name a shoe explicitly; **44%** say "these/them/it". Alias matching as specified would capture under a fifth of the corpus. Attribute by **video subject** first (the `video_id` is already stored in `payload`), then use in-text aliases to override or disambiguate. Still report precision and recall on ≥100 hand-labelled mentions. |
 
 ### W2 — NLP / Extraction (LLM-first)
 | ID | Task | Deps | Effort | Notes |
@@ -511,15 +540,15 @@ The collector must therefore be written source-agnostic from the first commit �
 | **W2-0** | **Experiment: LLM-only vs lexicon-gated extraction** | W1-full | 0.5d | **NEW.** Score both against GearLab on the same sample. If LLM-only wins, **W2-1 is deleted.** Run this before investing in the lexicon. |
 | W2-1 | Lexicon v1: 60–80 patterns (was 200–300) | W0-5, W2-0 | 1w | **Conditional on W2-0.** Measure marginal value of the last twenty before writing more. |
 | W2-2 | `NLP.py`: LLM extraction — attributes + archetype + experience | W2-0, W1-full | 1.5w | Batch 10–20 mentions per call. Low tens of dollars at Haiku-class pricing. |
-| W2-3 | Aggregation → $(x_j, y_j)$ per §7.4 | W2-2 | 1w | **Assign $N_{\min}$ (start 25) and publish the coverage-vs-$N_{\min}$ sensitivity curve.** |
+| W2-3 | Aggregation → $(x_j, y_j)$ per §7.4 | W2-2 | 1w | **Assign $N_{\min}$ and publish the coverage-vs-$N_{\min}$ curve.** First real data (379 docs, 2026-09-13): **0/30 shoes clear $N_{\min}=25$**; 3/30 clear 10; 21/30 have any mention; top 5 shoes hold **64%** of all mentions. Corpus accrues forward so this is a floor, not a ceiling — but $N_{\min}=25$ may be unreachable for most of the catalog, which makes §7.7 confidence the main thing keeping the product honest. |
 | W2-4 | Calibrate vs GearLab (§9.2); iterate | W2-3, W0-5, W0-4a | 1w | **Frozen weights, LOOCV, threshold stated in advance.** |
 | W2-5 | **Deferred:** `trainer.py` distillation (D1) | W2-4 | — | Revisit only when per-call cost becomes material. |
 
 ### W3 — Scoring
 | ID | Task | Deps | Effort | Notes |
 |---|---|---|---|---|
-| W3-1 | Spreadsheet scoring v0 (§7) | W5-1 | 3–4d | **In the thin slice.** Sanity-check ordering with a climber before writing Python. |
-| W3-2 | Per-brand sizing map | W5-1 | 1w | **Soft warning, not a hard gate** (D9). Hard gate only on "brand doesn't make this size." |
+| W3-1 | Spreadsheet scoring v0 (§7) | W5-1a | 3–4d | **In the thin slice.** Sanity-check ordering with a climber before writing Python. |
+| W3-2 | Per-brand sizing map | W5-1c | 1w | **Soft warning, not a hard gate** (D9). Hard gate only on "brand doesn't make this size." |
 | W3-3 | Code scorer; weights by judgment, externalized to config | W3-1, W3-2 | 1.5w | **No tuning at MVP** — no validation set exists (§7.6). |
 | W3-4 | Confidence $C_j$ propagation + display contract | W3-3 | 4d | **Promoted** — runs alongside W3-3, not after. |
 
@@ -533,17 +562,17 @@ The collector must therefore be written source-agnostic from the first commit �
 ### W5 — Catalog
 | ID | Task | Deps | Effort | Notes |
 |---|---|---|---|---|
-| W5-1a | Hand-place **30** shoes (calibration set) | W0-1a | 1w | **DONE.** Five §3 anchors included. This set exists to fit and validate `priors.py`, not to be the catalog. |
-| W5-1b | Fit spec→prior model (`priors.py`) | W5-1a | 2d | **DONE.** LOOCV MAE x 0.139 / y 0.113, 87% quadrant agreement. Refit with `priors.py --refit`. |
+| ~~W5-1a~~ | ~~Hand-place **30** shoes (calibration set)~~ | W0-1a | 1w | **DONE.** Five §3 anchors included. This set exists to fit and validate `priors.py`, not to be the catalog. |
+| ~~W5-1b~~ | ~~Fit spec→prior model (`priors.py`)~~ | W5-1a | 2d | **DONE.** LOOCV MAE x 0.139 / y 0.113, 87% quadrant agreement. Refit with `priors.py --refit`. |
 | W5-1c | Expand catalog to **~100** shoes | W5-1b | 1–2w | **D12.** Spec lookup only — `derive_prior()` supplies the placement, so no per-shoe judgement. Mark `prior_source: spec`. |
 | W5-1d | Source MSRP for all catalog shoes | W5-1c | 1w | Now the real budget item: scales linearly with catalog size. `validate.py --require-msrp` blocks the §7.6 budget gate until done. |
-| W5-2 | Lifecycle handling (discontinued/revised/version) | W5-1 | — | **Deferred.** At 30 shoes a discontinued shoe is a manual edit. Revisit past ~50. |
+| W5-2 | Lifecycle handling (discontinued/revised/version) | W5-1c | — | **Deferred.** At 30 shoes a discontinued shoe is a manual edit. Revisit past ~50. |
 
 ### W6 — Frontend (moved earlier)
 | ID | Task | Deps | Effort | Notes |
 |---|---|---|---|---|
 | W6-1 | Questionnaire UI | W4'-1, W4'-2 | 1–2w | **In the thin slice.** Anchor picker needs catalog autocomplete, not free text. |
-| W6-2 | Interactive quadrant | W5-1 | 1w static + 1w interactive | **Moved from second-to-last into the thin slice.** Hand-placed shoes test the product hypothesis with no corpus. |
+| W6-2 | Interactive quadrant | W5-1a | 1w static + 1w interactive | **Moved from second-to-last into the thin slice.** Hand-placed shoes test the product hypothesis with no corpus. |
 | W6-3 | Results + confidence display | W6-2, W3-1 | 1w | Low-confidence results visibly distinct; gated-out shoes never shown. |
 
 ---
