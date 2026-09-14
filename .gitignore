@@ -58,3 +58,9 @@ timeline.mdCLAUDE.local.md
 *.db
 backend/data/snapshots/*
 backend/data/cache/*
+
+# Collected corpus (W1-0b). Derived data, grows unboundedly, and contains
+# third-party content -- redistributing it in the repo is exactly what
+# timeline.md section 10 warns against. Regenerate with collector.py.
+backend/data/*.sqlite3
+backend/data/*.sqlite3-journal

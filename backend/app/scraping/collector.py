@@ -37,6 +37,7 @@ import json
 import logging
 import os
 import sqlite3
+import sys
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -524,6 +525,19 @@ def main() -> None:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)-7s %(message)s",
     )
+
+    # Load .env before any source reads os.environ. Without this a key sitting
+    # in .env looks identical to no key at all -- every source reports
+    # "unavailable" and the run silently collects nothing.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    try:
+        from config import load_dotenv
+
+        keys = load_dotenv()
+        if keys:
+            log.info("loaded %d key(s) from .env: %s", len(keys), ", ".join(sorted(keys)))
+    except ImportError:
+        log.debug("config.load_dotenv unavailable; using the ambient environment")
 
     store = LandingStore(args.db)
 

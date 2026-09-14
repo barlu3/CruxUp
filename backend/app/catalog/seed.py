@@ -137,6 +137,17 @@ def main() -> int:
                     help="validate and exercise the load, then roll back")
     args = ap.parse_args()
 
+    # DATABASE_URL usually lives in .env, which Python does not read natively.
+    if not args.database_url:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        try:
+            from config import load_dotenv
+
+            load_dotenv()
+            args.database_url = os.environ.get("DATABASE_URL")
+        except ImportError:
+            pass
+
     if not args.database_url:
         print("error: set DATABASE_URL or pass --database-url", file=sys.stderr)
         return 2
