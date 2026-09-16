@@ -451,7 +451,7 @@ These are the only route to tuning $\alpha, \beta, \gamma, \lambda$ (§7.6), whi
 
 ---
 
-## 10. Scraping Posture (W0-3)
+## 10. Scraping Posture (W0-3) — gated by W0-0
 
 ### 10.0 W0-0 DECISION (resolved 2026-09-13)
 
