@@ -48,6 +48,7 @@ token.json
 scaffold.sh
 
 # claude 
+CONTEXT.md
 .claude
 CLAUDE.md
 CLAUDE.local.md
