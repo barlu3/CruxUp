@@ -46,6 +46,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: 0.65
     quadrant_y_prior: -0.25
+    prior_source: hand
     note: >-
       Downturned boulder/sport shoe, but the P3 midsole keeps it noticeably
       stiffer than the Drago. This stiffness is why it is Q1 and not Q4 —
@@ -64,6 +65,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: 0.60
     quadrant_y_prior: -0.55
+    prior_source: hand
     note: Classic edging shoe; XS Edge and a stiff midsole put it firmly stiff-side.
     aliases: [Miura VS, Miura-VS, LS Miura VS]
 
@@ -79,6 +81,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: 0.50
     quadrant_y_prior: -0.60
+    prior_source: hand
     note: Long-route edging shoe. Laces let it run all-day, but it edges like a Q1.
     aliases: [Katana Lace, Katana Laces, LS Katana Lace]
 
@@ -93,6 +96,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: 0.68
     quadrant_y_prior: -0.15
+    prior_source: hand
     note: Aggressive lace-up sport shoe; lace closure gives a very precise fit.
     aliases: [Testarossa, LS Testarossa]
 
@@ -108,6 +112,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: 0.60
     quadrant_y_prior: -0.45
+    prior_source: hand
     note: >-
       The stiff sibling of the VSR. Flexan midsole; a precision edging shoe.
       Distinct row from Instinct VSR — different feel, different quadrant.
@@ -124,6 +129,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: 0.58
     quadrant_y_prior: -0.10
+    prior_source: hand
     note: Sits near the y boundary — moderate midsole, sensitive forefoot.
     aliases: [Oasi, Tenaya Oasi]
 
@@ -139,6 +145,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: 0.45
     quadrant_y_prior: -0.55
+    prior_source: hand
     note: Descendant of the Anasazi edging lineage; stiff and flat.
     aliases: [Anasazi Pro, 5.10 Anasazi Pro, Five Ten Anasazi Pro]
 
@@ -158,6 +165,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: -0.35
     quadrant_y_prior: -0.70
+    prior_source: hand
     note: >-
       The reference all-day trad shoe. Flat midsole plus ankle protection;
       section 4 notes flat-midsole comfort is what makes multi-pitch work.
@@ -174,6 +182,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: -0.55
     quadrant_y_prior: -0.45
+    prior_source: hand
     note: Wrapping lace system moulds to odd-shaped feet; a classic crack shoe.
     aliases: [Mythos, LS Mythos]
 
@@ -189,6 +198,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: -0.45
     quadrant_y_prior: -0.65
+    prior_source: hand
     note: Mid-height trad/crack shoe; direct TC Pro competitor.
     aliases: [Maestro Mid, Scarpa Maestro Mid]
 
@@ -203,6 +213,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: -0.40
     quadrant_y_prior: -0.50
+    prior_source: hand
     note: All-day granite/crack shoe with a flat last.
     aliases: [Astroman, Evolv Astroman]
 
@@ -218,6 +229,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: -0.10
     quadrant_y_prior: -0.40
+    prior_source: hand
     note: Sits near the x boundary — an all-rounder that leans neither way hard.
     aliases: [Vapor Lace, Scarpa Vapor Lace]
 
@@ -233,6 +245,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: 0.20
     quadrant_y_prior: -0.30
+    prior_source: hand
     note: >-
       Softer and more downturned than the Katana Lace. Distinct row: the
       version changes the last, which is exactly the W5-2 case.
@@ -253,6 +266,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: -0.50
     quadrant_y_prior: -0.55
+    prior_source: hand
     note: All-day multi-pitch shoe; notably available in a wide fit.
     aliases: [Altura, Butora Altura]
 
@@ -272,6 +286,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: -0.70
     quadrant_y_prior: 0.45
+    prior_source: hand
     note: >-
       Gym/beginner staple. Comfort + soft, which is Q3 — the v2 table had
       this as Q2.
@@ -288,6 +303,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: -0.70
     quadrant_y_prior: 0.45
+    prior_source: hand
     note: Women's-last counterpart to the Defy. Separate row because the last differs.
     aliases: [Elektra, Evolv Elektra]
 
@@ -302,6 +318,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: -0.75
     quadrant_y_prior: 0.30
+    prior_source: hand
     note: Entry-level lace-up; the default first shoe recommendation.
     aliases: [Tarantulace, LS Tarantulace]
 
@@ -316,6 +333,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: -0.80
     quadrant_y_prior: 0.25
+    prior_source: hand
     note: Wide, flat beginner shoe; about as far comfort-side as the catalogue goes.
     aliases: [Origin, Scarpa Origin]
 
@@ -330,6 +348,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: -0.78
     quadrant_y_prior: 0.35
+    prior_source: hand
     note: Knit upper, very breathable; a gym-session shoe.
     aliases: [Momentum, BD Momentum, Black Diamond Momentum]
 
@@ -344,6 +363,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: -0.30
     quadrant_y_prior: 0.70
+    prior_source: hand
     note: Very soft slip-on; a crack and smearing favourite that breaks in hugely.
     aliases: [Moccasym, Mocc, 5.10 Moccasym]
 
@@ -358,6 +378,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: -0.60
     quadrant_y_prior: 0.15
+    prior_source: hand
     note: Comfort-oriented all-rounder a step up from the Tarantulace.
     aliases: [Aragon, LS Aragon]
 
@@ -372,6 +393,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: -0.65
     quadrant_y_prior: 0.30
+    prior_source: hand
     note: Comfortable all-day gym and slab shoe.
     aliases: [Tanta, Tenaya Tanta]
 
@@ -391,6 +413,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: 0.80
     quadrant_y_prior: 0.85
+    prior_source: hand
     note: >-
       Soft, aggressive boulder shoe — the softest thing in the catalogue.
       Performance + soft is Q4. v2 asserted "Not Q4", which was backwards.
@@ -409,6 +432,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: 0.70
     quadrant_y_prior: 0.40
+    prior_source: hand
     note: >-
       Soft-rand version of the Instinct. Q4, but distinctly less soft than
       the Drago, so it sits nearer the y boundary. Boundary shoes like this
@@ -426,6 +450,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: 0.65
     quadrant_y_prior: 0.65
+    prior_source: hand
     note: Soft, sensitive, very good on steep volumes and smears.
     aliases: [Skwama, LS Skwama]
 
@@ -441,6 +466,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: 0.75
     quadrant_y_prior: 0.55
+    prior_source: hand
     note: >-
       Softer, more boulder-focused revision of the Solution — which puts it
       in a DIFFERENT quadrant from the base Solution (Q1). The canonical
@@ -458,6 +484,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: 0.72
     quadrant_y_prior: 0.60
+    prior_source: hand
     note: Competition-oriented soft boulder shoe.
     aliases: [Theory, LS Theory]
 
@@ -472,6 +499,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: 0.60
     quadrant_y_prior: 0.50
+    prior_source: hand
     note: Downturned boulder shoe with a notably deep heel cup.
     aliases: [Hiangle, Hi-Angle, 5.10 Hiangle]
 
@@ -486,6 +514,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: 0.58
     quadrant_y_prior: 0.40
+    prior_source: hand
     note: Aggressive but roomier than most Q4 shoes; the Love Bump forefoot.
     aliases: [Shaman, Evolv Shaman]
 
@@ -500,6 +529,7 @@ shoes:
     msrp_usd: null
     quadrant_x_prior: 0.62
     quadrant_y_prior: 0.30
+    prior_source: hand
     note: Precise but sensitive; another boundary shoe worth watching in eval.
     aliases: [Iati, Tenaya Iati]
 

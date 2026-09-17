@@ -48,6 +48,9 @@ ENUMS = {
     "closure":  {"lace", "velcro", "slipper"},
 }
 
+# Mirrors shoe_prior_source_valid, and priors.PriorSource.
+PRIOR_SOURCES = {"corpus", "hand", "spec"}
+
 
 def quadrant(x: float, y: float) -> str:
     if x > 0 and y < 0: return "Q1"
@@ -66,9 +69,20 @@ def validate(path: Path = CATALOG, require_msrp: bool = False) -> list[str]:
     except yaml.YAMLError as exc:
         return [f"YAML does not parse: {exc}"]
 
-    shoes = (data or {}).get("shoes") or []
+    # Structure first. Everything below assumes a mapping root, a list of
+    # shoes, and a mapping per shoe; hand-edited YAML violates all three
+    # easily, and each would otherwise surface as an AttributeError or
+    # TypeError crash rather than a readable validation error.
+    if not isinstance(data, dict):
+        return [f"catalogue root must be a mapping with a 'shoes' key, got {type(data).__name__}"]
+    shoes = data.get("shoes")
+    if not isinstance(shoes, list):
+        return [f"'shoes' must be a list, got {type(shoes).__name__}"]
     if not shoes:
         return ["no shoes found under top-level key 'shoes'"]
+    malformed = [i for i, s in enumerate(shoes) if not isinstance(s, dict)]
+    if malformed:
+        return [f"shoes[{i}] must be a mapping, got {type(shoes[i]).__name__}" for i in malformed]
 
     # --- D6 count band ------------------------------------------------------
     if not MIN_SHOES <= len(shoes) <= MAX_SHOES:
@@ -82,8 +96,42 @@ def validate(path: Path = CATALOG, require_msrp: bool = False) -> list[str]:
     quad_counts: Counter = Counter()
     missing_msrp: list[str] = []
 
-    for s in shoes:
+    for i, s in enumerate(shoes):
         label = f"{s.get('brand','?')} {s.get('model','?')} {s.get('version','')}".strip()
+
+        # Field types. A non-string identity field is unhashable in the
+        # identity set; a string prior ("0.5") raises TypeError in the range
+        # comparison; a non-list `aliases` breaks iteration. Report and skip
+        # the rest of this entry rather than crash.
+        type_errors = []
+        for field in ("brand", "model", "gender", "version"):
+            if s.get(field) is not None and not isinstance(s[field], str):
+                type_errors.append(f"{field} must be a string")
+        for field in ("quadrant_x_prior", "quadrant_y_prior", "msrp_usd"):
+            v = s.get(field)
+            if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float))):
+                type_errors.append(f"{field} must be a number, got {type(v).__name__}")
+        aliases_raw = s.get("aliases")
+        if aliases_raw is not None and (
+            not isinstance(aliases_raw, list) or not all(isinstance(a, str) for a in aliases_raw)
+        ):
+            type_errors.append("aliases must be a list of strings")
+        if type_errors:
+            errors.extend(f"shoes[{i}] ({label}): {e}" for e in type_errors)
+            continue
+
+        # --- prior provenance (mirrors shoe_prior_source_valid / _paired) ---
+        source = s.get("prior_source")
+        has_prior = s.get("quadrant_x_prior") is not None
+        if source is not None and source not in PRIOR_SOURCES:
+            errors.append(f"{label}: prior_source='{source}' not in {sorted(PRIOR_SOURCES)}")
+        if has_prior and source is None:
+            errors.append(
+                f"{label}: has a quadrant prior but no prior_source; section 7.7 "
+                f"confidence cannot tell a hand placement from a spec guess"
+            )
+        if source is not None and not has_prior:
+            errors.append(f"{label}: prior_source set without a placement")
 
         for required in ("brand", "model", "gender", "quadrant_x_prior", "quadrant_y_prior"):
             if s.get(required) is None:

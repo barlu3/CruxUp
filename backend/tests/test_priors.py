@@ -11,6 +11,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import numpy  # noqa: F401 -- hard import: a missing numpy must FAIL, not skip the regression guard
 import pytest
 import yaml
 
@@ -89,7 +90,6 @@ def test_loocv_score_has_not_regressed():
     Tolerance is generous -- this catches a broken feature set or a corrupted
     catalogue, not third-decimal drift.
     """
-    pytest.importorskip("numpy")
     hand = [s for s in SHOES if s.get("quadrant_x_prior") is not None]
     result = P.refit(hand)
 
@@ -104,7 +104,6 @@ def test_loocv_score_has_not_regressed():
 
 def test_checked_in_weights_reproduce_the_documented_score():
     """WEIGHTS must be what refit() produces, not a stale paste."""
-    pytest.importorskip("numpy")
     hand = [s for s in SHOES if s.get("quadrant_x_prior") is not None]
     result = P.refit(hand)
 

@@ -11,3 +11,4 @@ pyyaml
 tenacity
 structlog
 pytest
+numpy  # test dependency: priors.py regression tests refit the model (test_priors.py)

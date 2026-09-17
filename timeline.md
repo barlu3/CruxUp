@@ -4,7 +4,7 @@
 **Status:** Active. Supersedes v2.0 (2026-05-25).
 **Last updated:** 2026-09-14
 **Change basis:** v3.0 was the feasibility review of all 22 backlog tasks (§2.1). v3.1 adds D11 and D12, records what has actually been built (§2.0), and folds in two findings measured from the first live collection run — the mention-attribution problem (W1-3) and the $N_{\min}$ reachability problem (W2-3).
-**Progress:** 5 of 34 tasks complete (2 of the remainder are deferred). See §2.0.
+**Progress:** 4 of 34 tasks complete (2 deferred). W1-0b is **not** complete: its collection path failed the YouTube terms review (§10.2). See §2.0.
 
 ---
 
@@ -55,19 +55,18 @@ The original availability-based recommendation angle was **dropped**. The engine
 | **D8** | **Calibration weights are frozen before measurement, and evaluation uses LOOCV, not a holdout split.** | v2 was circular: §9.1 tuned the GearLab mapping to hit the confirmed placements, then §9.2 graded NLP against that fitted mapping. And an 80/20 split of n≈20 leaves 4 test shoes — CI on 4-sample accuracy is ~±45pp. | Rewrites §9. Adds the climber panel (W0-4a) as a second ground-truth source. |
 | **D9** | **Sizing is a soft warning, not a hard gate** — except where the brand does not make the size at all. | Downsizing convention is contested and personal. A hard gate over noisy self-reported sizing silently drops shoes that would have fit. | Rewrites §7.6. W3-2 rescoped. |
 | **D10** | **Survey fit validation is a directional check (n≈8–12), not a statistical study.** | A real claim needs 30–50 participants and weeks of recruitment. Solo and pre-launch, that is not available. | W4'-3 rescoped. Real validation waits for §9.3 post-launch data — which is why the feedback columns land in W0-1a now. |
-| **D11** | **Reddit is not load-bearing. Apply for free non-commercial access now; build the corpus on YouTube and forums.** | Self-service app registration is closed — every OAuth client needs manual approval, reported at 2-4 weeks with a real chance of silent rejection. Cost turned out not to be the obstacle (metered access is about $3.60 at this volume); *access latency and uncertainty* are. | Resolves W0-0. Splits W1-0 into 0a (apply), 0b (YouTube/forums collector), 0c (Reddit adapter on approval). Forces a source-agnostic collector interface. See §10.0. |
+| **D11** | **Reddit is not load-bearing. Apply for free non-commercial access now; build the corpus on YouTube and forums.** | Self-service app registration is closed — every OAuth client needs manual approval, reported at 2-4 weeks with a real chance of silent rejection. Cost turned out not to be the obstacle (metered access is about $3.60 at this volume); *access latency and uncertainty* are. | Resolves W0-0. Splits W1-0 into 0a (apply), 0b (YouTube/forums collector), 0c (Reddit adapter on approval). Forces a source-agnostic collector interface. See §10.0. **REOPENED 2026-09-16 — needs user sign-off.** The YouTube half of this decision failed the terms review (§10.2): the Developer Policies appear to prohibit the §7.4 design outright. The Reddit half stands. |
 
 ### 2.0 Progress (audited 2026-09-14)
 
 Audited against files on disk and verified runs, not against memory.
 
-**Complete — 5 of 34 backlog tasks:**
+**Complete — 4 of 34 backlog tasks:**
 
 | Task | Evidence |
 |---|---|
 | W0-0 licensing decision | D11 + §10.0. Two v3 assumptions corrected. |
 | W0-1a product schema | `0001_init.sql`. Applies / reverses / re-applies clean on PG 16.15; 10 constraint probes pass. |
-| W1-0b collector + YouTube adapter | `collector.py`, 15 tests. **379 live documents, 41 videos.** |
 | W5-1a hand-place 30 shoes | `shoes.yaml`, seeded to Postgres: 30 shoes, 71 aliases. |
 | W5-1b spec→prior model | `priors.py`. LOOCV MAE x 0.139 / y 0.113, 87% quadrant agreement. |
 
@@ -76,6 +75,7 @@ Audited against files on disk and verified runs, not against memory.
 
 **Two measured findings that change downstream design:**
 
+0. **The YouTube corpus is not cleared (§10.2).** YouTube's Developer Policies cap stored API data at 30 days and prohibit aggregating it or deriving new metrics from it — which is what §7.4 does. The 403 collected documents were purged on 2026-09-16 (they also carried reproducible author hashes). D11 is reopened. **This blocks the pipeline half of the plan; the thin slice (D7) does not depend on it.**
 1. **W1-3 needs redesigning.** Only 18% of collected comments name a shoe; 44% say "these/them/it". Alias matching would capture under a fifth of the corpus. Attribute by video subject first.
 2. **$N_{\min}=25$ may be unreachable.** 0/30 shoes clear it at 379 documents; top 5 hold 64% of mentions. The power law is steeper than §4 assumed. Query generation is currently anchor-biased, which partly explains it — per-shoe queries are the first fix.
 
@@ -467,6 +467,42 @@ Three calls, settled and binding:
 
 **The risk moved, it did not vanish.** YouTube and the forums are now primary, so *their* terms are now the governing ones. Before W1-0b collects anything: check YouTube's API terms for the same commercial-use question, and check `robots.txt` plus terms for Mountain Project and UKClimbing. This is a smaller surface than Reddit's, not a zero one.
 
+### 10.2 YouTube terms review (2026-09-16) — outcome: NOT CLEARED
+
+§10.0 required checking YouTube's terms before W1-0b collected anything. That check was skipped: 403 documents were collected on 2026-09-14 before it happened. It is recorded here now, against the collection path actually built — **YouTube Data API v3, `search.list` plus `commentThreads.list`, public comments fetched with an API key.** `youtube-transcript-api` is not implemented and was not reviewed.
+
+Source: YouTube API Services Developer Policies, <https://developers.google.com/youtube/terms/developer-policies>, read 2026-09-16. Quoted:
+
+| § | Policy text | Conflict with this project |
+|---|---|---|
+| III.E.4.d | API clients "may temporarily store limited amounts of [Non-Authorized Data] … but not longer than 30 calendar days." | Public comments fetched with an API key are Non-Authorized Data. The landing store was built to keep raw data **indefinitely**. |
+| III.E.4.h | API clients "must not … access or use [API Data] to create new or derived data or metrics." | §7.4 exists to derive per-shoe axis scores. This is the core of the pipeline. |
+| III.E.2.a | "Do not aggregate [API Data] except … relating to YouTube channels that are under the same content owner." | §7.4 aggregates comments across many unrelated channels. |
+| III.G.1.d | No selling advertising on pages containing API data without independent value. | Not a conflict: the platform carries no advertising (D11). |
+| III.F.2.a | Pages displaying YouTube content must attribute YouTube. | Not a conflict today: nothing displays YouTube content. |
+
+**Outcome: the YouTube collection path is not cleared for the §7.4 design.** Under III.E.4.h and III.E.2.a the intended *use* looks prohibited, not merely constrained. Retention limits and attribution could be engineered around; derived-metrics and aggregation bans cannot, without abandoning what the corpus is for.
+
+**Actions taken:**
+
+- The 403 collected documents were purged. The terms give no permitted purpose for them in this design, and every row also carried an author hash reproducible from the public fallback salt.
+- W1-0b is no longer counted complete. The collector code and tests stay, because the source-agnostic interface still serves forums and Reddit.
+- D11 is reopened rather than rewritten. It is a binding decision and changing it needs user sign-off.
+
+**Caveats — read before re-deciding:**
+
+- This is a reading of the published policy text, not legal advice. The derived-metrics prohibition is broad enough that its application to aggregate text analysis should be confirmed, ideally through YouTube's API compliance process rather than assumed either way.
+- If YouTube is kept in any form, a 30-day retention purge (III.E.4.d) is mandatory, and "keep raw forever because re-collection is impossible" must be dropped from the collector's design.
+- The same review has **not** been done for Mountain Project or UKClimbing (W1-0b′), or for Reddit's developer terms beyond commercial use. With YouTube out, those become the primary corpus candidates and inherit this exact question. Review them before building the forum adapter.
+
+**Options for re-deciding D11** — for the user, not decided here:
+
+1. **Forums as primary.** Review their terms first, as above.
+2. **Reddit as primary.** The free non-commercial tier is still pending application (W1-0a). Reddit's Data API terms need the same derived-use review.
+3. **No scraped corpus for MVP.** Ship on hand and spec priors (D12, `priors.py` at LOOCV MAE 0.139/0.113), with the climber panel (W0-4a) as the only human signal. The thin slice (D7) already works this way, and the first real measurement showed N_min=25 unreachable anyway.
+4. **Pursue YouTube compliance** through Google's audit process — slow and uncertain.
+
+
 **What changed the answer.** Two findings contradict what v3 assumed on 2026-09-07:
 
 | | v3 assumed | Reported reality (Sep 2026) |
@@ -528,7 +564,7 @@ The collector must therefore be written source-agnostic from the first commit �
 | ID | Task | Deps | Effort | Notes |
 |---|---|---|---|---|
 | **W1-0a** | **Submit Reddit free non-commercial application** | W0-0 | 1h | **NOT STARTED.** Paperwork, not code — and it is on the critical path: the 2–4 week approval queue only starts when it is submitted. Nothing downstream depends on it (D11), but every day unsubmitted is a day added to W1-0c. |
-| ~~W1-0b~~ | ~~Source-agnostic collector + YouTube adapter~~ | — | 2d then passive | **DONE 2026-09-13.** `collector.py` + 15 tests. **Live-verified: 379 documents from 41 videos**, ~1,050 of 10,000 daily quota. Idempotent across restarts (re-run added only genuinely new docs). Authors SHA-256 salted; display names never stored. |
+| **W1-0b** | Source-agnostic collector + YouTube adapter | — | 2d then passive | **CODE DONE, CORPUS NOT CLEARED (2026-09-16).** `collector.py` and 25 tests exist. The YouTube collection path failed the terms review in §10.2, so collection must not resume until D11 is re-decided. The 403 documents collected on 2026-09-14 were purged: the terms do not clear them, and every row was hashed with the public fallback salt (import-time salt bug, since fixed). Quota model corrected — search.list is its own bucket of 100 calls/day at 1 per call; comments draw from the separate 10,000-unit pool. |
 | **W1-0b′** | Forum adapter (Mountain Project, UKClimbing) | W1-0b | 3d | **NOT STARTED — deliberately.** §10.0 requires checking `robots.txt` and terms for each site first. Interface and store already exist; only `collect()` is missing. |
 | **W1-0c** | Reddit adapter | W1-0a approval | 2d | **BLOCKED** on approval. `RedditSource.available()` returns False until credentials exist, so nothing breaks if it never lands. |
 | W1-full | `sources.py` + `compile.py`: registry, OAuth, ingest → normalize → dedup → versioned snapshot | W0-0, W0-1b | 2w | Replaces W1-1/W1-2. Built around whichever source survived. |

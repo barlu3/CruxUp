@@ -78,6 +78,15 @@ def store(tmp_path):
     return C.LandingStore(tmp_path / "t.sqlite3")
 
 
+TEST_SALT = "0123456789abcdef" * 4  # 64 chars; synthetic, test-only
+
+
+@pytest.fixture(autouse=True)
+def author_salt(monkeypatch):
+    """Every test hashes authors, and hashing now refuses to run without a key."""
+    monkeypatch.setenv(C.SALT_ENV, TEST_SALT)
+
+
 # --------------------------------------------------------------------------
 # PII
 # --------------------------------------------------------------------------
@@ -102,33 +111,118 @@ def test_author_hash_is_deterministic_and_distinct():
 
 
 # --------------------------------------------------------------------------
-# Quota
+# Author salt (read at hash time; no public default)
 # --------------------------------------------------------------------------
 
-def test_quota_checked_before_call_not_after():
-    """A budget too small for even one search must make zero API calls."""
+def test_hashing_refuses_without_a_salt(monkeypatch):
+    monkeypatch.delenv(C.SALT_ENV, raising=False)
+    with pytest.raises(C.MissingAuthorSalt):
+        C._hash_author("UC_abc123")
+
+
+@pytest.mark.parametrize("weak", ["cruxup-dev-salt", "short", ""])
+def test_burned_or_weak_salts_are_rejected(monkeypatch, weak):
+    monkeypatch.setenv(C.SALT_ENV, weak)
+    with pytest.raises(C.MissingAuthorSalt):
+        C._hash_author("UC_abc123")
+
+
+def test_salt_is_read_at_hash_time_not_import_time(monkeypatch):
+    """The original bug: a salt set after import (as .env loading does) was ignored."""
+    monkeypatch.setenv(C.SALT_ENV, "a" * 64)
+    first = C._hash_author("UC_abc123")
+    monkeypatch.setenv(C.SALT_ENV, "b" * 64)
+    assert C._hash_author("UC_abc123") != first, "hash ignored a salt set after import"
+
+
+def test_hash_is_keyed_so_the_raw_id_alone_cannot_reproduce_it():
+    import hashlib
+    h = C._hash_author("UC_abc123")
+    assert h != hashlib.sha256(b"UC_abc123").hexdigest()
+    assert h != hashlib.sha256(b"cruxup-dev-salt:UC_abc123").hexdigest(), \
+        "still reproducible with the old public salt"
+
+
+# --------------------------------------------------------------------------
+# Quota: separate buckets, persisted, reserved before the request
+# --------------------------------------------------------------------------
+
+class FixedClock:
+    def __init__(self, day):
+        from datetime import datetime
+        self.now = datetime.fromisoformat(f"{day}T12:00:00")
+    def __call__(self):
+        return self.now
+
+
+def test_exhausted_search_bucket_makes_zero_calls():
     api = FakeAPI()
-    src = C.YouTubeSource(api_key="k", fetch=api, unit_budget=50)  # search costs 100
-    docs = src.collect("query", limit=10)
-
-    assert docs == []
+    src = C.YouTubeSource(api_key="k", fetch=api, search_limit=0)
+    assert src.collect("query", limit=10) == []
     assert api.calls == [], "spent quota it did not have"
-    assert src.units_used == 0
 
 
-def test_quota_accounting_matches_documented_costs():
+def test_search_and_units_are_separate_buckets():
+    """Per Google: search.list is its own 100/day bucket at cost 1, not 100 units."""
     api = FakeAPI(
         search=_search_response("vid1", "vid2"),
-        comments={
-            "vid1": {"items": [_comment("c1", "one")]},
-            "vid2": {"items": [_comment("c2", "two")]},
-        },
+        comments={"vid1": {"items": [_comment("c1", "one")]},
+                  "vid2": {"items": [_comment("c2", "two")]}},
     )
-    src = C.YouTubeSource(api_key="k", fetch=api)
-    src.collect("query", limit=10)
+    ledger = C.QuotaLedger.in_memory()
+    C.YouTubeSource(api_key="k", fetch=api, quota=ledger).collect("query", limit=10)
 
-    expected = C.YouTubeSource.COST_SEARCH + 2 * C.YouTubeSource.COST_COMMENT_THREADS
-    assert src.units_used == expected
+    assert ledger.used(C.YouTubeSource.SEARCH_BUCKET) == 1
+    assert ledger.used(C.YouTubeSource.UNITS_BUCKET) == 2, \
+        "search must not be charged against the shared unit pool"
+
+
+def test_exhausted_search_bucket_does_not_block_comment_units():
+    ledger = C.QuotaLedger.in_memory()
+    for _ in range(100):
+        ledger.reserve(C.YouTubeSource.SEARCH_BUCKET, 1, 100)
+    with pytest.raises(C.QuotaExceeded):
+        ledger.reserve(C.YouTubeSource.SEARCH_BUCKET, 1, 100)
+    ledger.reserve(C.YouTubeSource.UNITS_BUCKET, 1, 10_000)  # must not raise
+
+
+def test_failed_request_still_consumes_quota():
+    """Google charges quota even for invalid requests; the ledger must agree."""
+    def failing_fetch(url, params):
+        raise RuntimeError("YouTube API 400: bad request")
+    ledger = C.QuotaLedger.in_memory()
+    src = C.YouTubeSource(api_key="k", fetch=failing_fetch, quota=ledger)
+    with pytest.raises(RuntimeError):
+        src._search_videos("query")
+    assert ledger.used(C.YouTubeSource.SEARCH_BUCKET) == 1
+
+
+def test_quota_persists_across_processes(tmp_path):
+    """A second run on the same day must resume from the stored count, not zero."""
+    import sqlite3
+    db = tmp_path / "q.sqlite3"
+    clock = FixedClock("2026-09-16")
+
+    first = C.QuotaLedger(sqlite3.connect(db), clock=clock)
+    for _ in range(3):
+        first.reserve(C.YouTubeSource.SEARCH_BUCKET, 1, 5)
+    first.conn.close()
+
+    second = C.QuotaLedger(sqlite3.connect(db), clock=clock)  # fresh "process"
+    assert second.used(C.YouTubeSource.SEARCH_BUCKET) == 3
+    second.reserve(C.YouTubeSource.SEARCH_BUCKET, 1, 5)
+    second.reserve(C.YouTubeSource.SEARCH_BUCKET, 1, 5)
+    with pytest.raises(C.QuotaExceeded):
+        second.reserve(C.YouTubeSource.SEARCH_BUCKET, 1, 5)
+
+
+def test_quota_resets_on_a_new_pacific_day(tmp_path):
+    import sqlite3
+    conn = sqlite3.connect(tmp_path / "q.sqlite3")
+    C.QuotaLedger(conn, clock=FixedClock("2026-09-16")).reserve("youtube.search", 1, 1)
+    with pytest.raises(C.QuotaExceeded):
+        C.QuotaLedger(conn, clock=FixedClock("2026-09-16")).reserve("youtube.search", 1, 1)
+    C.QuotaLedger(conn, clock=FixedClock("2026-09-17")).reserve("youtube.search", 1, 1)
 
 
 def test_partial_results_kept_when_quota_runs_out_midway():
@@ -139,8 +233,8 @@ def test_partial_results_kept_when_quota_runs_out_midway():
             v: {"items": [_comment(f"c{v}", "text")]} for v in ("vid1", "vid2", "vid3")
         },
     )
-    # room for the search (100) plus exactly two commentThreads calls
-    src = C.YouTubeSource(api_key="k", fetch=api, unit_budget=102)
+    # room for exactly two commentThreads calls in the unit bucket
+    src = C.YouTubeSource(api_key="k", fetch=api, unit_limit=2)
     docs = src.collect("query", limit=10)
 
     assert len(docs) == 2, "should keep what it got before the budget ran out"
@@ -213,7 +307,12 @@ def test_insert_is_idempotent(store):
     assert store.insert(docs[:1]) == 0
 
 
-def test_unavailable_sources_report_reason_without_raising():
+def test_unavailable_sources_report_reason_without_raising(monkeypatch):
+    # YouTubeSource(api_key=None) and RedditSource() fall back to ambient
+    # credentials, so a configured shell or CI environment would flip this.
+    for var in ("YOUTUBE_API_KEY", "REDDIT_CLIENT_ID",
+                "REDDIT_CLIENT_SECRET", "REDDIT_USER_AGENT"):
+        monkeypatch.delenv(var, raising=False)
     for src in (C.YouTubeSource(api_key=None), C.ForumSource(), C.RedditSource()):
         ok, reason = src.available()
         assert ok is False

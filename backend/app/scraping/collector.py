@@ -18,10 +18,15 @@ rather than waiting.
 
 Storage
 -------
-Writes to a local landing table, NOT to the section 8.2 `mention` schema. That
-schema is W0-1b and is gated on W0-0. Raw payloads land here verbatim; W1-full
-normalises them later. Keeping raw means a normalisation bug is recoverable
-without re-collecting, which matters when re-collection is impossible.
+Writes to a local landing table, NOT to the section 8.2 `mention` schema. Raw
+payloads land here verbatim; W1-full normalises them later.
+
+RETENTION IS SOURCE-DEPENDENT. The original design kept raw data indefinitely.
+That does not hold for YouTube: its Developer Policies (III.E.4.d) cap stored
+Non-Authorized Data at 30 days, and III.E.4.h / III.E.2.a appear to prohibit
+the aggregation and derived metrics section 7.4 relies on. YouTube collection
+is not cleared -- see timeline.md section 10.2 -- and each source's terms must
+set its retention before that source collects anything.
 
 PII
 ---
@@ -33,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -43,15 +49,40 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 log = logging.getLogger("collector")
 
 DEFAULT_DB = Path(__file__).resolve().parents[2] / "data" / "corpus_landing.sqlite3"
 
-# A per-run salt would make hashes non-comparable across runs, so the salt is
-# fixed per deployment. It is not a secret in the cryptographic sense -- it
-# exists so a stored hash cannot be trivially reversed against a username list.
-AUTHOR_SALT = os.environ.get("CRUXUP_AUTHOR_SALT", "cruxup-dev-salt")
+# Author pseudonymisation key.
+#
+# Read when a hash is computed, NOT at import: main() loads .env after this
+# module is imported, so an import-time read silently ignored a salt defined
+# only in .env and fell back to a public default -- every stored hash was then
+# reproducible by anyone who read this file.
+#
+# This IS a secret. YouTube channel IDs are public, so whoever holds the key can
+# hash candidate IDs and match them against stored hashes. There is no default;
+# collection refuses to start without a real key.
+SALT_ENV = "CRUXUP_AUTHOR_SALT"
+MIN_SALT_LENGTH = 32
+_BURNED_SALTS = {"cruxup-dev-salt"}  # the former public fallback; never valid
+
+
+class MissingAuthorSalt(RuntimeError):
+    """CRUXUP_AUTHOR_SALT is absent, burned, or too short to protect stored hashes."""
+
+
+def _author_salt() -> bytes:
+    salt = os.environ.get(SALT_ENV, "")
+    if not salt or salt in _BURNED_SALTS or len(salt) < MIN_SALT_LENGTH:
+        raise MissingAuthorSalt(
+            f"{SALT_ENV} must be a random value of at least {MIN_SALT_LENGTH} "
+            f"characters. Generate one with: "
+            f'python3 -c "import secrets; print(secrets.token_hex(32))"'
+        )
+    return salt.encode()
 
 
 # ---------------------------------------------------------------------------
@@ -76,10 +107,16 @@ class RawDocument:
 
 
 def _hash_author(author: str | None) -> str | None:
-    """Hash an author identifier. The raw value never reaches storage."""
+    """Pseudonymise an author identifier. The raw value never reaches storage.
+
+    HMAC-SHA256 keyed with the deployment secret -- the standard primitive for
+    a keyed pseudonym. Every hash made under the old import-time salt was
+    already invalid, so this was the one point where switching constructions
+    cost nothing. Raises MissingAuthorSalt rather than hash with a guessable key.
+    """
     if not author:
         return None
-    return hashlib.sha256(f"{AUTHOR_SALT}:{author}".encode()).hexdigest()
+    return hmac.new(_author_salt(), author.encode(), hashlib.sha256).hexdigest()
 
 
 def _parse_iso8601(value: str | None) -> datetime | None:
@@ -126,6 +163,67 @@ class QuotaExceeded(RuntimeError):
     """The daily API quota is spent. Not retryable until it resets."""
 
 
+QUOTA_SCHEMA = """
+CREATE TABLE IF NOT EXISTS api_quota (
+    day    TEXT    NOT NULL,   -- quota day, America/Los_Angeles
+    bucket TEXT    NOT NULL,
+    used   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, bucket)
+);
+"""
+
+
+class QuotaLedger:
+    """Persistent, date-keyed quota counters, reserved BEFORE each request.
+
+    Persistent because an in-memory counter restarts at zero in every process,
+    so separate runs on one day could together exceed the provider's quota.
+    Reserved first because Google charges quota for every request "even if
+    invalid": counting only after success under-counts precisely the failing
+    requests that tend to repeat.
+
+    Days are keyed in America/Los_Angeles because YouTube quotas reset at
+    midnight Pacific time.
+    """
+
+    def __init__(self, conn: sqlite3.Connection, clock=None):
+        self.conn = conn
+        self.conn.executescript(QUOTA_SCHEMA)
+        self.conn.commit()
+        self._clock = clock or (lambda: datetime.now(ZoneInfo("America/Los_Angeles")))
+
+    def day(self) -> str:
+        return self._clock().date().isoformat()
+
+    def reserve(self, bucket: str, cost: int, limit: int) -> None:
+        """Atomically reserve `cost` units in `bucket`, or raise QuotaExceeded."""
+        day = self.day()
+        with self.conn:  # one transaction: create the row if absent, then a guarded increment
+            self.conn.execute(
+                "INSERT OR IGNORE INTO api_quota (day, bucket, used) VALUES (?, ?, 0)",
+                (day, bucket),
+            )
+            cur = self.conn.execute(
+                "UPDATE api_quota SET used = used + ? "
+                "WHERE day = ? AND bucket = ? AND used + ? <= ?",
+                (cost, day, bucket, cost, limit),
+            )
+        if cur.rowcount == 0:
+            raise QuotaExceeded(f"{bucket} quota exhausted for {day} (limit {limit})")
+
+    def used(self, bucket: str, day: str | None = None) -> int:
+        row = self.conn.execute(
+            "SELECT used FROM api_quota WHERE day = ? AND bucket = ?",
+            (day or self.day(), bucket),
+        ).fetchone()
+        return row[0] if row else 0
+
+    @classmethod
+    def in_memory(cls, clock=None) -> "QuotaLedger":
+        """Non-persistent ledger for tests and library use. main() never uses it."""
+        return cls(sqlite3.connect(":memory:"), clock=clock)
+
+
 class YouTubeSource(Source):
     """YouTube Data API v3.
 
@@ -140,13 +238,15 @@ class YouTubeSource(Source):
 
     Quota
     -----
-    The default allowance is 10,000 units/day. search.list costs 100 units;
-    commentThreads.list costs 1. So a run that searches 10 queries and pulls
-    comments from 5 videos each costs 10*100 + ~50 = ~1,050 units. The budget
-    is tracked in `units_used` and enforced before every call, because
-    overrunning it returns 403 for the rest of the day and silently ends
-    collection -- and a lost day of collection is not recoverable (the
-    Pushshift lesson, section 10.0).
+    Per Google's quota documentation (checked 2026-09-16), search.list has its
+    OWN bucket -- 100 calls/day at 1 per call -- separate from the 10,000-unit
+    pool shared by every other endpoint, including commentThreads.list (1 per
+    call). The previous code charged each search 100 units against the shared
+    pool, which misstated the search limit and starved comment collection.
+
+    Both buckets are persisted in a date-keyed QuotaLedger and reserved before
+    each request, so failed requests count and separate runs on the same day
+    cannot jointly overrun the provider's quota.
 
     Transport is injected so the adapter is testable without network access.
     """
@@ -154,21 +254,29 @@ class YouTubeSource(Source):
     name = "youtube"
 
     API = "https://www.googleapis.com/youtube/v3"
-    COST_SEARCH = 100
+    SEARCH_BUCKET = "youtube.search"
+    SEARCH_COST = 1
+    SEARCH_DAILY_LIMIT = 100
+    UNITS_BUCKET = "youtube.units"
+    UNITS_DAILY_LIMIT = 10_000
     COST_COMMENT_THREADS = 1
-    DAILY_UNIT_BUDGET = 10_000
 
     def __init__(
         self,
         api_key: str | None = None,
         fetch=None,
-        unit_budget: int = DAILY_UNIT_BUDGET,
+        quota: QuotaLedger | None = None,
+        search_limit: int = SEARCH_DAILY_LIMIT,
+        unit_limit: int = UNITS_DAILY_LIMIT,
         videos_per_query: int = 5,
     ):
         self.api_key = api_key or os.environ.get("YOUTUBE_API_KEY")
         self._fetch = fetch or self._http_get
-        self.unit_budget = unit_budget
-        self.units_used = 0
+        # main() injects a persistent ledger. The in-memory fallback exists for
+        # tests and library use and does NOT protect the provider's daily quota.
+        self.quota = quota or QuotaLedger.in_memory()
+        self.search_limit = search_limit
+        self.unit_limit = unit_limit
         self.videos_per_query = videos_per_query
 
     def available(self) -> tuple[bool, str]:
@@ -196,15 +304,12 @@ class YouTubeSource(Source):
                 raise QuotaExceeded(body[:200]) from exc
             raise RuntimeError(f"YouTube API {exc.code}: {body[:200]}") from exc
 
-    def _call(self, endpoint: str, cost: int, **params) -> dict:
-        if self.units_used + cost > self.unit_budget:
-            raise QuotaExceeded(
-                f"would exceed unit budget ({self.units_used}+{cost} > {self.unit_budget})"
-            )
+    def _call(self, endpoint: str, bucket: str, cost: int, limit: int, **params) -> dict:
+        # Reserve BEFORE the request: Google charges quota even for requests
+        # that fail, so the ledger must too.
+        self.quota.reserve(bucket, cost, limit)
         params["key"] = self.api_key
-        result = self._fetch(f"{self.API}/{endpoint}", params)
-        self.units_used += cost
-        return result
+        return self._fetch(f"{self.API}/{endpoint}", params)
 
     # -- collection --------------------------------------------------------
 
@@ -212,7 +317,9 @@ class YouTubeSource(Source):
         """(video_id, title) for videos matching `query`."""
         data = self._call(
             "search",
-            self.COST_SEARCH,
+            self.SEARCH_BUCKET,
+            self.SEARCH_COST,
+            self.search_limit,
             part="snippet",
             q=query,
             type="video",
@@ -243,7 +350,13 @@ class YouTubeSource(Source):
                 params["pageToken"] = page_token
 
             try:
-                data = self._call("commentThreads", self.COST_COMMENT_THREADS, **params)
+                data = self._call(
+                    "commentThreads",
+                    self.UNITS_BUCKET,
+                    self.COST_COMMENT_THREADS,
+                    self.unit_limit,
+                    **params,
+                )
             except QuotaExceeded:
                 raise
             except RuntimeError as exc:
@@ -540,18 +653,31 @@ def main() -> None:
         log.debug("config.load_dotenv unavailable; using the ambient environment")
 
     store = LandingStore(args.db)
+    ledger = QuotaLedger(store.conn)
 
     if args.status:
         rows = store.daily_volume()
         if not rows:
             print("no documents collected yet")
-            return
-        print(f"{'date':<12} {'source':<10} {'count':>7}")
-        for day, source, count in rows:
-            print(f"{day:<12} {source:<10} {count:>7}")
+        else:
+            print(f"{'date':<12} {'source':<10} {'count':>7}")
+            for day, source, count in rows:
+                print(f"{day:<12} {source:<10} {count:>7}")
+        print(
+            f"\nYouTube quota for {ledger.day()} (Pacific): "
+            f"search {ledger.used(YouTubeSource.SEARCH_BUCKET)}/{YouTubeSource.SEARCH_DAILY_LIMIT} calls, "
+            f"units {ledger.used(YouTubeSource.UNITS_BUCKET)}/{YouTubeSource.UNITS_DAILY_LIMIT}"
+        )
         return
 
-    sources: list[Source] = [YouTubeSource(), ForumSource(), RedditSource()]
+    # Fail before any request is made, not on the first comment hashed.
+    try:
+        _author_salt()
+    except MissingAuthorSalt as exc:
+        log.error("refusing to collect: %s", exc)
+        raise SystemExit(2)
+
+    sources: list[Source] = [YouTubeSource(quota=ledger), ForumSource(), RedditSource()]
     for s in sources:
         ok, reason = s.available()
         log.info("source %-8s %s (%s)", s.name, "AVAILABLE" if ok else "unavailable", reason)

@@ -44,7 +44,7 @@ from validate import CATALOG, validate  # noqa: E402
 COLUMNS = (
     "brand", "model", "version", "gender", "last_shape", "downturn",
     "stiffness_spec", "closure", "rubber", "msrp_usd",
-    "quadrant_x_prior", "quadrant_y_prior",
+    "quadrant_x_prior", "quadrant_y_prior", "prior_source",
 )
 
 IDENTITY = ("brand", "model", "version", "gender")
@@ -93,6 +93,8 @@ def seed(conn, shoes: list[dict], dry_run: bool = False) -> SeedResult:
     updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in COLUMNS if c not in IDENTITY)
 
     with conn.cursor() as cur:
+        # Pass 1: upsert every shoe and collect its id.
+        seeded: list[tuple[object, dict]] = []
         for shoe in shoes:
             row = _row(shoe)
             if row["msrp_usd"] is None:
@@ -111,9 +113,21 @@ def seed(conn, shoes: list[dict], dry_run: bool = False) -> SeedResult:
                 result.inserted += 1
             else:
                 result.updated += 1
+            seeded.append((shoe_id, shoe))
 
-            # Replace rather than merge: a removed alias must stop matching.
-            cur.execute("DELETE FROM shoe_alias WHERE shoe_id = %s", (shoe_id,))
+        # Pass 2: clear aliases for EVERY seeded shoe before inserting any.
+        # shoe_alias_globally_unique spans the whole table, so deleting
+        # per-shoe inside pass 1 is order-dependent: an alias moving from a
+        # later shoe to an earlier one collides with the later shoe's row,
+        # which has not been deleted yet, and the transaction aborts.
+        cur.execute(
+            "DELETE FROM shoe_alias WHERE shoe_id = ANY(%s)",
+            ([shoe_id for shoe_id, _ in seeded],),
+        )
+
+        # Pass 3: insert the current aliases. Replace, not merge -- a removed
+        # alias must stop matching.
+        for shoe_id, shoe in seeded:
             for alias in shoe.get("aliases") or []:
                 cur.execute(
                     "INSERT INTO shoe_alias (shoe_id, alias) VALUES (%s, %s)",

@@ -26,17 +26,16 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r backend/requirements.txt
 ```
 
-Three packages are used by tooling but deliberately not in `requirements.txt`,
-because they are dev-time only:
+`requirements.txt` includes the test dependencies `pytest` and `numpy`.
+`numpy` is needed because the prior-model regression tests refit the model, and
+they **fail rather than skip** if it is missing. `derive_prior()` itself is pure
+Python.
+
+One optional tool is not in `requirements.txt`:
 
 ```bash
-pip install pytest numpy pglast
+pip install pglast   # validates the DDL against the real PostgreSQL grammar, no server needed
 ```
-
-- `numpy` — refitting the prior model (`priors.py --refit`). `derive_prior()`
-  itself is pure Python and does not need it.
-- `pglast` — validates the DDL against the real PostgreSQL grammar without a
-  running server.
 
 ---
 
@@ -123,7 +122,7 @@ Everything else is optional and the code degrades cleanly without it:
 |---|---|---|
 | `YOUTUBE_API_KEY` | Corpus collection | Collector logs `unavailable` and skips |
 | `REDDIT_*` | Reddit adapter (W1-0c) | Skipped — **by design**, see D11 |
-| `CRUXUP_AUTHOR_SALT` | Author hashing | Falls back to a dev salt |
+| `CRUXUP_AUTHOR_SALT` | Author hashing — **a secret** | Collector **refuses to start**; no fallback |
 | `ANTHROPIC_API_KEY` | LLM extraction (W2-2) | Not used yet |
 
 ---
@@ -136,7 +135,9 @@ python3 backend/app/catalog/seed.py --dry-run  # exercise the load, roll back
 python3 backend/app/catalog/seed.py            # commit
 ```
 
-Expect `30 inserted, 0 updated, 71 aliases`. Running it again gives
+Expect `30 inserted, 0 updated, 71 aliases`. Every placement carries a
+`prior_source` (`hand` for the current 30), which the schema requires whenever
+coordinates are present. Running it again gives
 `0 inserted, 30 updated` — it upserts on `(brand, model, version, gender)` and
 each shoe keeps its UUID, because `recommendation.shoe_id` points at it.
 
@@ -148,7 +149,7 @@ prints what is wrong and touches nothing.
 ## 6. Verify
 
 ```bash
-python3 -m pytest backend/tests/ -q        # 54 tests, no network, no database
+python3 -m pytest backend/tests/ -q        # 64 tests, no network, no database
 python3 backend/app/catalog/validate.py    # catalogue invariants
 python3 backend/app/catalog/priors.py      # spec model vs hand placements
 ```
@@ -215,6 +216,13 @@ agreement** — better than the ≤0.2 that §9.2 asks of the NLP pipeline.
 
 ## Running the collector
 
+> **Do not run YouTube collection right now.** The YouTube path failed the terms
+> review in timeline.md §10.2: YouTube's Developer Policies cap stored API data at
+> 30 days and prohibit aggregating it or deriving metrics from it, which is what
+> §7.4 does. D11 is reopened. The collector code stays because its interface also
+> serves forums and Reddit, but it should not collect YouTube data until D11 is
+> re-decided.
+
 ```bash
 python3 backend/app/scraping/collector.py            # collect
 python3 backend/app/scraping/collector.py --status   # documents per day
@@ -222,18 +230,19 @@ python3 backend/app/scraping/collector.py --status   # documents per day
 
 It lands raw documents in a local SQLite store at
 `backend/data/corpus_landing.sqlite3`, **not** in Postgres — normalisation into
-the §8.2 `mention` schema is W1-full. Keeping raw means a normalisation bug is
-recoverable without re-collecting, which matters because re-collecting is
-impossible: Pushshift is dead, so the corpus only accrues forward in wall-clock
-time.
+the §8.2 `mention` schema is W1-full. How long raw data may be kept is set by
+each source's terms, not by convenience: YouTube caps it at 30 days (§10.2).
 
-Collection is idempotent across restarts, so it is safe to run on a schedule.
+Collection is idempotent across restarts, and quota is tracked per Pacific day in
+the same store (`--status` shows usage), so repeated runs cannot jointly overrun
+the daily limit. Do not schedule it until a source is cleared.
 
 **Reddit is unavailable and that is deliberate** (D11). Self-service app
 registration is closed; every OAuth client needs manual approval, reported at
 2–4 weeks and refusable. The free tier is non-commercial only. YouTube and
-climbing forums are the primary corpus; Reddit is an adapter that lights up if
-approval ever lands.
+climbing forums were the chosen corpus, but YouTube has since failed its terms
+review and forum terms are unreviewed — the corpus source is an open decision
+(timeline.md §10.2).
 
 ---
 

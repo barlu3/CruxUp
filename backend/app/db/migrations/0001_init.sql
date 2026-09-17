@@ -32,6 +32,10 @@ CREATE TABLE shoe (
     -- ARE the placement; after W2-3 they become the sub-N_min fallback.
     quadrant_x_prior NUMERIC(4,3),
     quadrant_y_prior NUMERIC(4,3),
+    -- Provenance of the placement (priors.PriorSource). Section 7.7 confidence
+    -- depends on it: corpus > hand > spec. Without it a spec-derived guess and a
+    -- hand-placed calibration shoe are indistinguishable downstream.
+    prior_source     TEXT,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     CONSTRAINT shoe_unique_identity UNIQUE (brand, model, version, gender),
@@ -43,7 +47,13 @@ CREATE TABLE shoe (
     CONSTRAINT shoe_prior_x_range   CHECK (quadrant_x_prior IS NULL OR quadrant_x_prior BETWEEN -1 AND 1),
     CONSTRAINT shoe_prior_y_range   CHECK (quadrant_y_prior IS NULL OR quadrant_y_prior BETWEEN -1 AND 1),
     -- Priors are set as a pair or not at all; one axis alone is always a bug.
-    CONSTRAINT shoe_prior_paired    CHECK ((quadrant_x_prior IS NULL) = (quadrant_y_prior IS NULL))
+    CONSTRAINT shoe_prior_paired    CHECK ((quadrant_x_prior IS NULL) = (quadrant_y_prior IS NULL)),
+    CONSTRAINT shoe_prior_source_valid CHECK (
+        prior_source IS NULL OR prior_source IN ('corpus', 'hand', 'spec')
+    ),
+    -- A placement always carries its provenance, and provenance without a
+    -- placement is meaningless. (Given shoe_prior_paired, checking x suffices.)
+    CONSTRAINT shoe_prior_source_paired CHECK ((quadrant_x_prior IS NULL) = (prior_source IS NULL))
 );
 
 CREATE INDEX shoe_status_idx ON shoe (status) WHERE status = 'active';
