@@ -1,2 +1,557 @@
-# [W5-1] Seed catalog. One entry per shoe (brand, model, version, gender,
-# last_shape, downturn, stiffness_spec, closure, rubber, msrp_usd, aliases).
+# [W5-1] Seed catalog — 30 shoes (D6 rescope: 25-30, was 50-100).
+#
+# Run `python3 backend/app/catalog/validate.py` after any edit. It enforces
+# the D6 count band, the section-3 anchor placements, alias uniqueness, and
+# prior ranges — all things that have already been got wrong by hand once.
+#
+# QUADRANT PRIORS (timeline.md section 3)
+#   x: comfort (-1) .. performance (+1)
+#   y: stiff   (-1) .. soft        (+1)
+#   Q1 x>0,y<0 perf+stiff | Q2 x<0,y<0 comfort+stiff
+#   Q3 x<0,y>0 comfort+soft | Q4 x>0,y>0 perf+soft
+#
+# In the thin slice (D7) these priors ARE the placement — there is no corpus
+# yet. After W2-3 they become the sub-N_min fallback. They are deliberate
+# judgement calls, not measurements, which is exactly what hand-placement
+# means; W0-4a exists to check them against independent raters.
+#
+# DATA PROVENANCE — READ BEFORE USING
+#   stated:     brand, model, closure, downturn, rubber, stiffness_spec,
+#               last_shape — stable published characteristics of these models.
+#   UNVERIFIED: msrp_usd is null on every row. Prices move, vary by region and
+#               retailer, and feed the section 7.6 budget gate. Guessing them
+#               would put fabricated numbers behind a user-facing filter.
+#               Populate from brand sites before the budget gate ships;
+#               tracked as open item 1 at the foot of this file.
+#
+# The five section-3 anchors are marked `anchor: true` and use the CORRECTED
+# placements (v3): Solution Q1, TC Pro Q2, Drago Q4, Instinct VSR Q4,
+# Defy Q3. Do not regress these.
+
+shoes:
+
+  # ---------------------------------------------------------------------------
+  # Q1 — performance + stiff: sport, technical face, edging
+  # ---------------------------------------------------------------------------
+
+  - brand: La Sportiva
+    model: Solution
+    gender: unisex
+    anchor: true
+    last_shape: asymmetric
+    downturn: aggressive
+    stiffness_spec: moderate-stiff
+    closure: velcro
+    rubber: Vibram XS Grip2
+    msrp_usd: null
+    quadrant_x_prior: 0.65
+    quadrant_y_prior: -0.25
+    prior_source: hand
+    note: >-
+      Downturned boulder/sport shoe, but the P3 midsole keeps it noticeably
+      stiffer than the Drago. This stiffness is why it is Q1 and not Q4 —
+      the v2 table had this inverted.
+    aliases: [Solution, LS Solution, Sportiva Solution]
+
+  - brand: La Sportiva
+    model: Miura
+    version: VS
+    gender: unisex
+    last_shape: asymmetric
+    downturn: moderate
+    stiffness_spec: stiff
+    closure: velcro
+    rubber: Vibram XS Edge
+    msrp_usd: null
+    quadrant_x_prior: 0.60
+    quadrant_y_prior: -0.55
+    prior_source: hand
+    note: Classic edging shoe; XS Edge and a stiff midsole put it firmly stiff-side.
+    aliases: [Miura VS, Miura-VS, LS Miura VS]
+
+  - brand: La Sportiva
+    model: Katana
+    version: Lace
+    gender: unisex
+    last_shape: semi-asymmetric
+    downturn: flat
+    stiffness_spec: stiff
+    closure: lace
+    rubber: Vibram XS Edge
+    msrp_usd: null
+    quadrant_x_prior: 0.50
+    quadrant_y_prior: -0.60
+    prior_source: hand
+    note: Long-route edging shoe. Laces let it run all-day, but it edges like a Q1.
+    aliases: [Katana Lace, Katana Laces, LS Katana Lace]
+
+  - brand: La Sportiva
+    model: Testarossa
+    gender: unisex
+    last_shape: asymmetric
+    downturn: aggressive
+    stiffness_spec: moderate
+    closure: lace
+    rubber: Vibram XS Grip2
+    msrp_usd: null
+    quadrant_x_prior: 0.68
+    quadrant_y_prior: -0.15
+    prior_source: hand
+    note: Aggressive lace-up sport shoe; lace closure gives a very precise fit.
+    aliases: [Testarossa, LS Testarossa]
+
+  - brand: Scarpa
+    model: Instinct
+    version: VS
+    gender: unisex
+    last_shape: asymmetric
+    downturn: moderate
+    stiffness_spec: stiff
+    closure: velcro
+    rubber: Vibram XS Edge
+    msrp_usd: null
+    quadrant_x_prior: 0.60
+    quadrant_y_prior: -0.45
+    prior_source: hand
+    note: >-
+      The stiff sibling of the VSR. Flexan midsole; a precision edging shoe.
+      Distinct row from Instinct VSR — different feel, different quadrant.
+    aliases: [Instinct VS, Scarpa Instinct VS]
+
+  - brand: Tenaya
+    model: Oasi
+    gender: unisex
+    last_shape: asymmetric
+    downturn: moderate
+    stiffness_spec: moderate
+    closure: velcro
+    rubber: Vibram XS Grip
+    msrp_usd: null
+    quadrant_x_prior: 0.58
+    quadrant_y_prior: -0.10
+    prior_source: hand
+    note: Sits near the y boundary — moderate midsole, sensitive forefoot.
+    aliases: [Oasi, Tenaya Oasi]
+
+  - brand: Five Ten
+    model: Anasazi
+    version: Pro
+    gender: unisex
+    last_shape: semi-asymmetric
+    downturn: flat
+    stiffness_spec: stiff
+    closure: velcro
+    rubber: Stealth C4
+    msrp_usd: null
+    quadrant_x_prior: 0.45
+    quadrant_y_prior: -0.55
+    prior_source: hand
+    note: Descendant of the Anasazi edging lineage; stiff and flat.
+    aliases: [Anasazi Pro, 5.10 Anasazi Pro, Five Ten Anasazi Pro]
+
+  # ---------------------------------------------------------------------------
+  # Q2 — comfort + stiff: trad, multi-pitch, all-day
+  # ---------------------------------------------------------------------------
+
+  - brand: La Sportiva
+    model: TC Pro
+    gender: unisex
+    anchor: true
+    last_shape: neutral
+    downturn: flat
+    stiffness_spec: stiff
+    closure: lace
+    rubber: Vibram XS Edge
+    msrp_usd: null
+    quadrant_x_prior: -0.35
+    quadrant_y_prior: -0.70
+    prior_source: hand
+    note: >-
+      The reference all-day trad shoe. Flat midsole plus ankle protection;
+      section 4 notes flat-midsole comfort is what makes multi-pitch work.
+    aliases: [TC Pro, TCPro, TC-Pro]
+
+  - brand: La Sportiva
+    model: Mythos
+    gender: unisex
+    last_shape: neutral
+    downturn: flat
+    stiffness_spec: moderate-stiff
+    closure: lace
+    rubber: Vibram XS Edge
+    msrp_usd: null
+    quadrant_x_prior: -0.55
+    quadrant_y_prior: -0.45
+    prior_source: hand
+    note: Wrapping lace system moulds to odd-shaped feet; a classic crack shoe.
+    aliases: [Mythos, LS Mythos]
+
+  - brand: Scarpa
+    model: Maestro
+    version: Mid
+    gender: unisex
+    last_shape: neutral
+    downturn: flat
+    stiffness_spec: stiff
+    closure: lace
+    rubber: Vibram XS Edge
+    msrp_usd: null
+    quadrant_x_prior: -0.45
+    quadrant_y_prior: -0.65
+    prior_source: hand
+    note: Mid-height trad/crack shoe; direct TC Pro competitor.
+    aliases: [Maestro Mid, Scarpa Maestro Mid]
+
+  - brand: Evolv
+    model: Astroman
+    gender: unisex
+    last_shape: neutral
+    downturn: flat
+    stiffness_spec: moderate-stiff
+    closure: lace
+    rubber: Trax SAS
+    msrp_usd: null
+    quadrant_x_prior: -0.40
+    quadrant_y_prior: -0.50
+    prior_source: hand
+    note: All-day granite/crack shoe with a flat last.
+    aliases: [Astroman, Evolv Astroman]
+
+  - brand: Scarpa
+    model: Vapor
+    version: Lace
+    gender: unisex
+    last_shape: semi-asymmetric
+    downturn: flat
+    stiffness_spec: moderate-stiff
+    closure: lace
+    rubber: Vibram XS Edge
+    msrp_usd: null
+    quadrant_x_prior: -0.10
+    quadrant_y_prior: -0.40
+    prior_source: hand
+    note: Sits near the x boundary — an all-rounder that leans neither way hard.
+    aliases: [Vapor Lace, Scarpa Vapor Lace]
+
+  - brand: La Sportiva
+    model: Katana
+    version: Velcro
+    gender: unisex
+    last_shape: semi-asymmetric
+    downturn: moderate
+    stiffness_spec: moderate
+    closure: velcro
+    rubber: Vibram XS Grip2
+    msrp_usd: null
+    quadrant_x_prior: 0.20
+    quadrant_y_prior: -0.30
+    prior_source: hand
+    note: >-
+      Softer and more downturned than the Katana Lace. Distinct row: the
+      version changes the last, which is exactly the W5-2 case.
+      NOTE: grouped here with the trad shoes by use case, but its priors
+      (0.20, -0.30) compute to Q1, not Q2. That is deliberate — it is a
+      genuine boundary shoe — but it means the section comments above are
+      about intended use, not about which quadrant the numbers land in.
+    aliases: [Katana Velcro, Katana VCR, LS Katana Velcro]
+
+  - brand: Butora
+    model: Altura
+    gender: unisex
+    last_shape: neutral
+    downturn: flat
+    stiffness_spec: stiff
+    closure: lace
+    rubber: Neo Fuse
+    msrp_usd: null
+    quadrant_x_prior: -0.50
+    quadrant_y_prior: -0.55
+    prior_source: hand
+    note: All-day multi-pitch shoe; notably available in a wide fit.
+    aliases: [Altura, Butora Altura]
+
+  # ---------------------------------------------------------------------------
+  # Q3 — comfort + soft: gym, beginner, slab
+  # ---------------------------------------------------------------------------
+
+  - brand: Evolv
+    model: Defy
+    gender: mens
+    anchor: true
+    last_shape: neutral
+    downturn: flat
+    stiffness_spec: soft
+    closure: velcro
+    rubber: Trax SAS
+    msrp_usd: null
+    quadrant_x_prior: -0.70
+    quadrant_y_prior: 0.45
+    prior_source: hand
+    note: >-
+      Gym/beginner staple. Comfort + soft, which is Q3 — the v2 table had
+      this as Q2.
+    aliases: [Defy, Evolv Defy]
+
+  - brand: Evolv
+    model: Elektra
+    gender: womens
+    last_shape: neutral
+    downturn: flat
+    stiffness_spec: soft
+    closure: velcro
+    rubber: Trax SAS
+    msrp_usd: null
+    quadrant_x_prior: -0.70
+    quadrant_y_prior: 0.45
+    prior_source: hand
+    note: Women's-last counterpart to the Defy. Separate row because the last differs.
+    aliases: [Elektra, Evolv Elektra]
+
+  - brand: La Sportiva
+    model: Tarantulace
+    gender: unisex
+    last_shape: neutral
+    downturn: flat
+    stiffness_spec: soft
+    closure: lace
+    rubber: FriXion RS
+    msrp_usd: null
+    quadrant_x_prior: -0.75
+    quadrant_y_prior: 0.30
+    prior_source: hand
+    note: Entry-level lace-up; the default first shoe recommendation.
+    aliases: [Tarantulace, LS Tarantulace]
+
+  - brand: Scarpa
+    model: Origin
+    gender: unisex
+    last_shape: neutral
+    downturn: flat
+    stiffness_spec: soft
+    closure: velcro
+    rubber: Vision
+    msrp_usd: null
+    quadrant_x_prior: -0.80
+    quadrant_y_prior: 0.25
+    prior_source: hand
+    note: Wide, flat beginner shoe; about as far comfort-side as the catalogue goes.
+    aliases: [Origin, Scarpa Origin]
+
+  - brand: Black Diamond
+    model: Momentum
+    gender: unisex
+    last_shape: neutral
+    downturn: flat
+    stiffness_spec: soft
+    closure: velcro
+    rubber: BD Fuse
+    msrp_usd: null
+    quadrant_x_prior: -0.78
+    quadrant_y_prior: 0.35
+    prior_source: hand
+    note: Knit upper, very breathable; a gym-session shoe.
+    aliases: [Momentum, BD Momentum, Black Diamond Momentum]
+
+  - brand: Five Ten
+    model: Moccasym
+    gender: unisex
+    last_shape: neutral
+    downturn: flat
+    stiffness_spec: very soft
+    closure: slipper
+    rubber: Stealth C4
+    msrp_usd: null
+    quadrant_x_prior: -0.30
+    quadrant_y_prior: 0.70
+    prior_source: hand
+    note: Very soft slip-on; a crack and smearing favourite that breaks in hugely.
+    aliases: [Moccasym, Mocc, 5.10 Moccasym]
+
+  - brand: La Sportiva
+    model: Aragon
+    gender: unisex
+    last_shape: neutral
+    downturn: flat
+    stiffness_spec: moderate
+    closure: lace
+    rubber: FriXion RS
+    msrp_usd: null
+    quadrant_x_prior: -0.60
+    quadrant_y_prior: 0.15
+    prior_source: hand
+    note: Comfort-oriented all-rounder a step up from the Tarantulace.
+    aliases: [Aragon, LS Aragon]
+
+  - brand: Tenaya
+    model: Tanta
+    gender: unisex
+    last_shape: neutral
+    downturn: flat
+    stiffness_spec: soft
+    closure: velcro
+    rubber: Vibram XS Grip
+    msrp_usd: null
+    quadrant_x_prior: -0.65
+    quadrant_y_prior: 0.30
+    prior_source: hand
+    note: Comfortable all-day gym and slab shoe.
+    aliases: [Tanta, Tenaya Tanta]
+
+  # ---------------------------------------------------------------------------
+  # Q4 — performance + soft: bouldering, steep terrain
+  # ---------------------------------------------------------------------------
+
+  - brand: Scarpa
+    model: Drago
+    gender: unisex
+    anchor: true
+    last_shape: asymmetric
+    downturn: aggressive
+    stiffness_spec: very soft
+    closure: velcro
+    rubber: Vibram XS Grip2
+    msrp_usd: null
+    quadrant_x_prior: 0.80
+    quadrant_y_prior: 0.85
+    prior_source: hand
+    note: >-
+      Soft, aggressive boulder shoe — the softest thing in the catalogue.
+      Performance + soft is Q4. v2 asserted "Not Q4", which was backwards.
+    aliases: [Drago, Scarpa Drago]
+
+  - brand: Scarpa
+    model: Instinct
+    version: VSR
+    gender: unisex
+    anchor: true
+    last_shape: asymmetric
+    downturn: moderate
+    stiffness_spec: soft
+    closure: velcro
+    rubber: Vibram XS Grip2
+    msrp_usd: null
+    quadrant_x_prior: 0.70
+    quadrant_y_prior: 0.40
+    prior_source: hand
+    note: >-
+      Soft-rand version of the Instinct. Q4, but distinctly less soft than
+      the Drago, so it sits nearer the y boundary. Boundary shoes like this
+      are where quadrant-agreement metrics get decided (section 9.2).
+    aliases: [Instinct VSR, Scarpa Instinct VSR, VSR]
+
+  - brand: La Sportiva
+    model: Skwama
+    gender: unisex
+    last_shape: asymmetric
+    downturn: aggressive
+    stiffness_spec: soft
+    closure: velcro
+    rubber: Vibram XS Grip2
+    msrp_usd: null
+    quadrant_x_prior: 0.65
+    quadrant_y_prior: 0.65
+    prior_source: hand
+    note: Soft, sensitive, very good on steep volumes and smears.
+    aliases: [Skwama, LS Skwama]
+
+  - brand: La Sportiva
+    model: Solution
+    version: Comp
+    gender: unisex
+    last_shape: asymmetric
+    downturn: aggressive
+    stiffness_spec: soft
+    closure: velcro
+    rubber: Vibram XS Grip2
+    msrp_usd: null
+    quadrant_x_prior: 0.75
+    quadrant_y_prior: 0.55
+    prior_source: hand
+    note: >-
+      Softer, more boulder-focused revision of the Solution — which puts it
+      in a DIFFERENT quadrant from the base Solution (Q1). The canonical
+      example of why `version` is part of the unique key.
+    aliases: [Solution Comp, Solution Comps, LS Solution Comp]
+
+  - brand: La Sportiva
+    model: Theory
+    gender: unisex
+    last_shape: asymmetric
+    downturn: aggressive
+    stiffness_spec: soft
+    closure: velcro
+    rubber: Vibram XS Grip2
+    msrp_usd: null
+    quadrant_x_prior: 0.72
+    quadrant_y_prior: 0.60
+    prior_source: hand
+    note: Competition-oriented soft boulder shoe.
+    aliases: [Theory, LS Theory]
+
+  - brand: Five Ten
+    model: Hiangle
+    gender: unisex
+    last_shape: asymmetric
+    downturn: aggressive
+    stiffness_spec: soft
+    closure: velcro
+    rubber: Stealth C4
+    msrp_usd: null
+    quadrant_x_prior: 0.60
+    quadrant_y_prior: 0.50
+    prior_source: hand
+    note: Downturned boulder shoe with a notably deep heel cup.
+    aliases: [Hiangle, Hi-Angle, 5.10 Hiangle]
+
+  - brand: Evolv
+    model: Shaman
+    gender: unisex
+    last_shape: asymmetric
+    downturn: aggressive
+    stiffness_spec: moderate-soft
+    closure: velcro
+    rubber: Trax SAS
+    msrp_usd: null
+    quadrant_x_prior: 0.58
+    quadrant_y_prior: 0.40
+    prior_source: hand
+    note: Aggressive but roomier than most Q4 shoes; the Love Bump forefoot.
+    aliases: [Shaman, Evolv Shaman]
+
+  - brand: Tenaya
+    model: Iati
+    gender: unisex
+    last_shape: asymmetric
+    downturn: moderate
+    stiffness_spec: moderate-soft
+    closure: velcro
+    rubber: Vibram XS Grip
+    msrp_usd: null
+    quadrant_x_prior: 0.62
+    quadrant_y_prior: 0.30
+    prior_source: hand
+    note: Precise but sensitive; another boundary shoe worth watching in eval.
+    aliases: [Iati, Tenaya Iati]
+
+
+
+# -----------------------------------------------------------------------------
+# OPEN ITEMS before this seed is production-ready
+# -----------------------------------------------------------------------------
+# 1. msrp_usd is null on all 28 rows. Populate from brand sites and record a
+#    source URL per row. The section 7.6 budget gate cannot ship until this is
+#    done — a null price must not be silently treated as "within budget".
+# 2. shoe_size_map (W3-2) is empty. size_exists defaults TRUE, so the D9 hard
+#    gate currently passes everything. Fine for the thin slice; not fine once
+#    real users enter a street size.
+# 3. Quadrant priors are single-rater judgements. W0-4a exists to test them
+#    against independent raters — expect some to move, especially the boundary
+#    shoes flagged in the notes (Instinct VSR, Iati, Oasi, Vapor Lace).
+# 4. Counts by quadrant, computed from the priors (not from the section
+#    headings, which group by intended use): Q1 8, Q2 6, Q3 8, Q4 8 = 30.
+#    Q2 is thinnest — add trad/multi-pitch models first if the catalogue grows.
+#    Do not hand-maintain these numbers; validate.py prints them.
+# 5. Mechanically verified by validate.py: count inside the D6 band, YAML
+#    parses, 71 aliases unique case-insensitively, no duplicate identity,
+#    every prior inside [-1,1] and off-axis, enums match the SQL CHECK
+#    constraints, and all five anchors land in their section-3 quadrants.
