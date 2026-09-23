@@ -2,9 +2,9 @@
 
 **Version:** 3.2
 **Status:** Active. Supersedes v2.0 (2026-05-25).
-**Last updated:** 2026-09-21
+**Last updated:** 2026-09-23
 **Change basis:** v3.0 was the feasibility review of all 22 backlog tasks (§2.1). v3.1 adds D11 and D12, records what has actually been built (§2.0), and folds in two findings measured from the first live collection run — the mention-attribution problem (W1-3) and the $N_{\min}$ reachability problem (W2-3). **v3.2** closes a structural gap found while sequencing W6-1: the HTTP layer (**W7**) and the frontend build foundation (**W6-0**) were assumed by the scaffold but carried no task ID, so the plan showed W6-1 as startable when two prerequisites did not exist. See §15.
-**Progress:** 5 of 37 tasks complete (2 deferred). W1-0b is **not** complete: its collection path failed the YouTube terms review (§10.2). See §2.0.
+**Progress:** 6 of 37 tasks complete (2 deferred). W1-0b is **not** complete: its collection path failed the YouTube terms review (§10.2). See §2.0.
 
 ---
 
@@ -57,11 +57,11 @@ The original availability-based recommendation angle was **dropped**. The engine
 | **D10** | **Survey fit validation is a directional check (n≈8–12), not a statistical study.** | A real claim needs 30–50 participants and weeks of recruitment. Solo and pre-launch, that is not available. | W4'-3 rescoped. Real validation waits for §9.3 post-launch data — which is why the feedback columns land in W0-1a now. |
 | **D11** | **Reddit is not load-bearing. Apply for free non-commercial access now; build the corpus on YouTube and forums.** | Self-service app registration is closed — every OAuth client needs manual approval, reported at 2-4 weeks with a real chance of silent rejection. Cost turned out not to be the obstacle (metered access is about $3.60 at this volume); *access latency and uncertainty* are. | Resolves W0-0. Splits W1-0 into 0a (apply), 0b (YouTube/forums collector), 0c (Reddit adapter on approval). Forces a source-agnostic collector interface. See §10.0. **REOPENED 2026-09-16 — needs user sign-off.** The YouTube half of this decision failed the terms review (§10.2): the Developer Policies appear to prohibit the §7.4 design outright. The Reddit half stands. |
 
-### 2.0 Progress (audited 2026-09-14; refreshed 2026-09-21)
+### 2.0 Progress (audited 2026-09-14; refreshed 2026-09-23)
 
 Audited against files on disk and verified runs, not against memory.
 
-**Complete — 5 of 37 backlog tasks** (37 since v3.2 added W6-0, W7-1, W7-2):
+**Complete — 6 of 37 backlog tasks** (37 since v3.2 added W6-0, W7-1, W7-2):
 
 | Task | Evidence |
 |---|---|
@@ -70,6 +70,7 @@ Audited against files on disk and verified runs, not against memory.
 | W5-1a hand-place 30 shoes | `shoes.yaml`, seeded to Postgres: 30 shoes, 71 aliases. |
 | W5-1b spec→prior model | `priors.py`. LOOCV MAE x 0.139 / y 0.113, 87% quadrant agreement. |
 | W4'-1 survey capture (2026-09-17) | `survey/{schema,anchors,store}.py`. 146 tests; anchors resolve against the seeded catalog and reject unknown *and ambiguous* pairs; no DDL added. Reviewed 2026-09-20 (database / python / security). |
+| W4'-2 preferences → $\mathbf{q}^*$ (2026-09-23) | `survey/preferences.py`, a pure stdlib function. Every discipline lands in its §3 quadrant, and $\mathbf{q}^*$ stays inside $[-1,1]^2$ and off both axes for all 600 enum combinations (1334 tests). Reviewed (python). **Not yet wired into capture** — see §13. |
 
 **Built but not on the backlog** — support the above, worth naming so they are not re-scoped later:
 `validate.py` (catalogue invariants + the `--require-msrp` budget-gate guard), `config.py` (`.env` loading), `SETUP.md` (local setup, verified end to end), 54 tests.
@@ -80,9 +81,9 @@ Audited against files on disk and verified runs, not against memory.
 1. **W1-3 needs redesigning.** Only 18% of collected comments name a shoe; 44% say "these/them/it". Alias matching would capture under a fifth of the corpus. Attribute by video subject first.
 2. **$N_{\min}=25$ may be unreachable.** 0/30 shoes clear it at 379 documents; top 5 hold 64% of mentions. The power law is steeper than §4 assumed. Query generation is currently anchor-biased, which partly explains it — per-shoe queries are the first fix.
 
-**Not started:** everything else. The thin slice (D7) now has its data layer *and* survey capture, but no scorer, no HTTP surface and no UI. `backend/app/api/`, `recommend/`, `nlp/`, `eval/` and all of `src/app/` are still stubs.
+**Not started:** everything else. The thin slice (D7) now has its data layer, survey capture and the $\mathbf{q}^*$ target function, but no scorer, no HTTP surface and no UI. `backend/app/api/`, `recommend/`, `nlp/`, `eval/` and all of `src/app/` are still stubs.
 
-**Nearest unblocks (refreshed 2026-09-21):** the critical path to a shippable slice runs **W4'-2 → W7-1 → W6-0 → W6-1**. W4'-2 is the cheapest real progress — a pure function with fixture tests, no new infrastructure, and a hard dependency of W6-1. W1-0a remains one hour of paperwork gating a 2–4 week queue. W5-1c/W5-1d are mechanical and gate the §7.6 budget gate.
+**Nearest unblocks (refreshed 2026-09-23):** the critical path to a shippable slice runs **W7-1 → W6-0 → W6-1**, now that W4'-2 is done (2026-09-23). W7-1 must also settle how the raw comfort-vs-performance answer reaches `target_quadrant()` (§13). W1-0a remains one hour of paperwork gating a 2–4 week queue. W5-1c/W5-1d are mechanical and gate the §7.6 budget gate.
 
 ### 2.1 Review disposition (2026-09-07)
 
@@ -601,7 +602,7 @@ The collector must therefore be written source-agnostic from the first commit �
 | ID | Task | Deps | Effort | Notes |
 |---|---|---|---|---|
 | ~~W4'-1~~ | ~~Survey schema: fit inputs + anchor shoes $G,B$~~ | W0-1a | 1w | **DONE 2026-09-17, reviewed 2026-09-20.** `survey/{schema,anchors,store}.py`, 146 tests. Anchors resolve against the catalog; an ambiguous `(brand, model)` is rejected, never guessed. No DDL added. The HTTP surface is **W7-1**, not this task. |
-| W4'-2 | Preference inputs → target $\mathbf{q}^*$ | W0-1a | 3d | Pure function + fixture tests; assert discipline → quadrant. |
+| ~~W4'-2~~ | ~~Preference inputs → target $\mathbf{q}^*$~~ | W0-1a | 3d | **DONE 2026-09-23, reviewed 2026-09-23.** `survey/preferences.py`, 1334 tests. Discipline sets the quadrant; terrain, level and goal only move $\mathbf{q}^*$ within it, and by construction it never reaches an axis. Stiffness preference and downsizing tolerance are not modelled. Not yet called by capture (§13). |
 | W4'-3 | **Directional** fit check, $n \approx 8$–12 | W4'-1, W3-1 | 1w | **Rescoped** (D10). Sanity-check, not validation. Real validation = §9.4 post-launch. |
 
 ### W5 — Catalog
@@ -698,6 +699,11 @@ Durations assume a solo builder. The v2 note "estimates for a small team" no lon
 
 - **Foot scan re-introduction (post-MVP):** LiDAR via ARKit (`ARMeshAnchor`/RealityKit; **not** ARFaceAnchor/TrueDepth — that API is face-only) + ARCore ToF; photo fallback with calibration reference + MediaPipe/YOLOv8 keypoints. Slots into §7.2 by raising $c$ and adding geometric dimensions. Re-open biometric posture at that point — derived measurements only, no images (D4).
 - **W6-3 has no server-side scorer to call (raised 2026-09-21, needs a decision).** W6-3 "Results + confidence" depends on W6-2 and **W3-1**, but W3-1 is deliberately *a spreadsheet* ("sanity-check ordering with a climber before writing Python"). The first coded scorer is W3-3, which depends on W3-2 → W5-1c — all after the slice ships. So as drawn, the thin slice reaches a results page with nothing to produce results. Three ways out: (a) pull a minimal coded scorer forward into the slice; (b) let W6-3 read pre-computed results and accept that the slice demos rather than serves; (c) re-point W6-3's dependency at W3-3 and move it out of the slice. This also decides whether W7-2 is in scope for the slice.
+- **$\mathbf{q}^*$ is computed but not wired into capture (raised 2026-09-23, needs a decision).** `preferences.target_quadrant()` (W4'-2) exists, but nothing calls it.
+  - The submission allow-list has no key for the raw comfort-vs-performance answer, so a payload carrying it is rejected (D4).
+  - `user_survey` stores only the derived `goal_x_target` / `goal_y_target`, so a stored target cannot be recomputed exactly if the mapping constants change.
+  - Options: (a) `POST /survey` (W7-1) converts the raw answer to $\mathbf{q}^*$ before validation, with no DDL change; (b) add a column for the raw answer in a new migration, which could be bundled with the missing `heel_fit` / `terrain` / `level` CHECKs.
+  - W7-1's dependencies do not yet include W4'-2.
 - **Learned ranking:** replace the weighted scorer once online feedback labels exist (§9.4).
 - **`trainer.py` distillation:** LLM → small classifier when volume/cost justify (W2-5).
 - **Catalog growth past 30:** triggers W5-2 (lifecycle) and raises the long-tail cold-start problem again.
@@ -714,6 +720,11 @@ Durations assume a solo builder. The v2 note "estimates for a small team" no lon
 ---
 
 ## 15. Changelog
+
+**v3.2, progress update (2026-09-23)** — no plan or decision change.
+- Struck **W4'-2** through: done and reviewed 2026-09-23, 1334 tests. The critical path is now W7-1 → W6-0 → W6-1.
+- Raised the $\mathbf{q}^*$ wiring gap in §13 — **open, needs a decision.**
+- Progress 5 → 6 of 37. No §2 decision was changed.
 
 **v3.2 (2026-09-21)** — closed a structural gap: the plan showed W6-1 as startable when two of its prerequisites had no task ID.
 - Added workstream **W7 — API / Service Layer** (§5, §11): W7-1 (FastAPI app + `POST /survey` + `GET /shoes`) and W7-2 (`POST /recommend`). The scaffold created `main.py`, three route stubs and `src/app/lib/api.ts`, but no task ever owned them.
