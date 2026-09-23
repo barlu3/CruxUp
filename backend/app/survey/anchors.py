@@ -216,12 +216,15 @@ class PostgresCatalog:
     def __init__(self, conn):
         self._conn = conn
 
+    # Parameters are .strip()ped in Python, not btrim()med in SQL, so surrounding
+    # whitespace is normalised exactly as StaticCatalog's _key() does it
+    # (btrim only removes spaces; str.strip also removes tabs, newlines, NBSP).
     def by_identity(self, brand: str, model: str) -> list[CatalogShoe]:
         with self._conn.cursor() as cur:
             cur.execute(
                 "SELECT id, brand, model, version, gender FROM shoe "
                 "WHERE lower(brand) = lower(%s) AND lower(model) = lower(%s)",
-                (brand, model),
+                (brand.strip(), model.strip()),
             )
             return [
                 CatalogShoe(str(row[0]), row[1], row[2], row[3], row[4])
@@ -234,7 +237,7 @@ class PostgresCatalog:
                 "SELECT s.id, s.brand, s.model, s.version, s.gender "
                 "FROM shoe_alias sa JOIN shoe s ON s.id = sa.shoe_id "
                 "WHERE lower(sa.alias) = lower(%s)",
-                (alias,),
+                (alias.strip(),),
             )
             row = cur.fetchone()
             return CatalogShoe(str(row[0]), row[1], row[2], row[3], row[4]) if row else None
@@ -309,14 +312,15 @@ def _resolve_one(
         if not isinstance(gender, str) or _key(gender) not in GENDERS:
             return None, f"{where}: 'gender' must be one of {sorted(GENDERS)}, got {gender!r}"
 
-    # --- identity match: exact (brand, model), narrowed by version/gender if given ---
+    # --- identity match: exact (brand, model) ---
     candidates = catalog.by_identity(brand, model)
-    if "version" in entry:
-        candidates = [c for c in candidates if _key(c.version) == _key(version)]
-    if "gender" in entry:
-        candidates = [c for c in candidates if _key(c.gender) == _key(gender)]
 
-    # --- alias fallback: ONLY when identity matched nothing at all ---
+    # --- alias fallback: ONLY when the raw identity match is empty ---
+    # Checked BEFORE the version/gender narrowing below, never after it: an
+    # explicit version/gender that filters out every identity row is a
+    # mismatch to report, not a cue to fall back to an alias hit that ignores
+    # those fields (e.g. "Solution" + version "Comp2" must not resolve to the
+    # base Solution).
     # Deliberately NOT tried as a tie-break when identity is already ambiguous
     # (>1 candidates): "Solution" is itself a registered alias of the BASE
     # Solution only, so treating alias as a tie-breaker would silently
@@ -332,6 +336,12 @@ def _resolve_one(
         alias_hit = catalog.by_alias(model)
         if alias_hit is not None and _key(alias_hit.brand) == _key(brand):
             candidates = [alias_hit]
+
+    # --- explicit version/gender narrow whichever candidate set won above ---
+    if "version" in entry:
+        candidates = [c for c in candidates if _key(c.version) == _key(version)]
+    if "gender" in entry:
+        candidates = [c for c in candidates if _key(c.gender) == _key(gender)]
 
     if len(candidates) == 0:
         return None, f"{where}: unknown shoe -- no catalog match for '{brand}' '{model}'"

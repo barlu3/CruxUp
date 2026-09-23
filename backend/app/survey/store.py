@@ -155,11 +155,14 @@ def main() -> int:
     args = ap.parse_args()
 
     try:
-        payload = json.loads(args.payload.read_text())
+        payload = json.loads(args.payload.read_bytes())
+    # read_bytes(), not read_text(): see schema.main() -- the locale encoding
+    # would turn a legitimate "42 ½" size into mojibake. ValueError covers both
+    # json.JSONDecodeError and UnicodeDecodeError (invalid bytes).
     # RecursionError: json.loads blows the stack on deeply nested input and
     # is not a JSONDecodeError, so without it a crafted payload exits with a
     # traceback rather than a clean error.
-    except (OSError, json.JSONDecodeError, RecursionError) as exc:
+    except (OSError, ValueError, RecursionError) as exc:
         print(f"error: cannot read payload: {exc}", file=sys.stderr)
         return 1
 

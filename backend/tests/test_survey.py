@@ -971,7 +971,7 @@ def test_db_insert_survey_dry_run_leaves_user_survey_row_count_unchanged(db_conn
     with db_conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM user_survey")
         (after,) = cur.fetchone()
-    assert after == before == 0, "user_survey must be empty before and after a --dry-run insert"
+    assert after == before, "a --dry-run insert must not add a row to user_survey"
 
 
 # ==========================================================================
@@ -1072,6 +1072,10 @@ def test_cli_store_dry_run_end_to_end_against_the_real_database(db_conn, tmp_pat
         "foot_width": "narrow",
         "known_good_shoes": [{"brand": "Scarpa", "model": "Drago"}],
     }))
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM user_survey")
+        (before,) = cur.fetchone()
+
     result = _run_cli(STORE_CLI, [str(payload), "--database-url", _database_url(), "--dry-run"])
 
     assert result.returncode == 0, result.stderr
@@ -1079,8 +1083,8 @@ def test_cli_store_dry_run_end_to_end_against_the_real_database(db_conn, tmp_pat
 
     with db_conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM user_survey")
-        (count,) = cur.fetchone()
-    assert count == 0, "the CLI's --dry-run must leave user_survey empty"
+        (after,) = cur.fetchone()
+    assert after == before, "the CLI's --dry-run must not add a row to user_survey"
 
 
 # ==========================================================================
@@ -1301,3 +1305,106 @@ def test_the_reviewed_functions_now_declare_their_return_types():
     assert "tuple" in A.resolve_anchors.__annotations__["return"]
     assert "tuple" in A._resolve_one.__annotations__["return"]
     assert "Iterable" in A.StaticCatalog.__init__.__annotations__["shoes"]
+
+
+# ==========================================================================
+# M. Follow-up review findings, each pinned by a regression test
+# ==========================================================================
+
+# --- alias fallback must not override an explicit version/gender -----------
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"brand": "La Sportiva", "model": "Solution", "version": "Comp2"},
+        {"brand": "La Sportiva", "model": "Solution", "gender": "womens"},
+        {"brand": "Scarpa", "model": "Drago", "version": "XYZ"},
+    ],
+    ids=["solution-version-comp2", "solution-gender-womens", "drago-version-xyz"],
+)
+def test_non_matching_explicit_version_or_gender_is_rejected_not_resolved_via_alias(entry):
+    """"Solution" and "Drago" are also registered aliases. When the explicit
+    version/gender filters out every identity row, the alias fallback used to
+    run and accept its hit without those filters -- silently resolving to the
+    base Solution (a section 3 calibration anchor) or the Drago."""
+    resolved, err = A._resolve_one(entry, "known_good_shoes", 0, _catalog())
+    assert resolved is None
+    assert "unknown shoe" in err
+
+
+def test_alias_hit_is_still_narrowed_by_an_explicit_version():
+    """The explicit filters apply to whichever candidate set wins, including
+    an alias hit: a consistent version still resolves, a conflicting one does
+    not."""
+    resolved, err = A._resolve_one(
+        {"brand": "Scarpa", "model": "VSR", "version": "VSR"}, "known_good_shoes", 0, _catalog()
+    )
+    assert err is None
+    assert resolved["shoe_id"] == "id-instinct-vsr"
+
+    resolved, err = A._resolve_one(
+        {"brand": "Scarpa", "model": "VSR", "version": "VS"}, "known_good_shoes", 0, _catalog()
+    )
+    assert resolved is None
+    assert "unknown shoe" in err
+
+
+# --- PostgresCatalog must strip surrounding whitespace like StaticCatalog ---
+
+@pytest.mark.parametrize(
+    "entry,static_id",
+    [
+        ({"brand": " Scarpa ", "model": "Drago "}, "id-drago"),  # identity path
+        ({"brand": "Scarpa", "model": " VSR\t"}, "id-instinct-vsr"),  # alias path
+    ],
+    ids=["identity", "alias"],
+)
+def test_db_surrounding_whitespace_resolves_the_same_as_the_static_catalog(db_conn, entry, static_id):
+    resolved, err = A._resolve_one(entry, "known_good_shoes", 0, _catalog())
+    assert err is None and resolved["shoe_id"] == static_id
+
+    stripped = {k: v.strip() for k, v in entry.items()}
+    expected, err = A._resolve_one(stripped, "known_good_shoes", 0, A.PostgresCatalog(db_conn))
+    assert err is None
+
+    resolved, err = A._resolve_one(entry, "known_good_shoes", 0, A.PostgresCatalog(db_conn))
+    assert err is None, err
+    assert resolved["shoe_id"] == expected["shoe_id"]
+
+
+# --- CLIs decode the payload as JSON bytes, not locale text ----------------
+
+@pytest.mark.parametrize("script", [SCHEMA_CLI, STORE_CLI], ids=["schema", "store"])
+def test_cli_exits_1_cleanly_on_invalid_utf8_bytes_not_with_a_traceback(tmp_path, script):
+    """UnicodeDecodeError is not a json.JSONDecodeError, so read_text() on
+    invalid bytes used to escape the except clause as a traceback."""
+    payload = tmp_path / "payload.json"
+    payload.write_bytes(b'{"foot_width": "narrow\xff"}')
+    args = [str(payload)]
+    if script == STORE_CLI:
+        args += ["--database-url", "postgresql://localhost:1/unreachable", "--dry-run"]
+    result = _run_cli(script, args)
+    assert result.returncode == 1
+    assert "cannot read payload" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_cli_store_accepts_a_non_ascii_size_under_a_non_utf8_locale(db_conn, tmp_path):
+    """read_text() decoded with the locale encoding, so under ISO-8859-1 a
+    legitimate "42 ½" became "42 Â½" and failed the size charset check. Where
+    the locale is not installed, Python falls back to UTF-8 and this passes
+    trivially rather than failing spuriously."""
+    import os
+
+    payload = tmp_path / "payload.json"
+    payload.write_bytes(json.dumps(
+        {"known_good_shoes": [{"brand": "Scarpa", "model": "Drago", "size": "42 ½"}]},
+        ensure_ascii=False,
+    ).encode("utf-8"))
+    env = {**os.environ, "LC_ALL": "en_US.ISO8859-1", "PYTHONUTF8": "0"}
+    result = subprocess.run(
+        [sys.executable, str(STORE_CLI), str(payload), "--database-url", _database_url(), "--dry-run"],
+        capture_output=True, text=True, timeout=30, env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "[dry run, rolled back] survey_token=" in result.stdout
