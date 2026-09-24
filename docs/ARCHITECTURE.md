@@ -709,6 +709,11 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   suite stays hermetic. Each rolls back and asserts it left `user_survey` empty.
   This is the first automated database coverage in the project; migration
   apply/reverse remains manual (`SETUP.md` §3).
+- **Continuous integration** (`.github/workflows/ci.yml`, GitHub Actions; runs on pushes to `main`, on pull requests, and manually):
+  - `unit` — Python 3.10 and 3.12, no database. Validates the catalogue, then runs the suite with an unreachable `DATABASE_URL`, proving the DB-backed tests skip rather than fail.
+  - `integration` — a PostgreSQL 16 service container. Applies `0001_init.sql`, reverses it and checks zero tables remain, re-applies it, seeds the catalogue, runs the full suite, and **fails if any test skipped**, since a skip with a database present means the setup broke. It then checks `user_survey` is empty.
+  - There is no frontend job yet: the app cannot build (§12). There is no deploy stage, because there is no hosting target.
+  - The migration apply/reverse check is automated here; `SETUP.md` §3 remains the manual procedure for a local database.
 - **Stub test files:** `test_fit.py`, `test_aggregate.py`, `test_calibration.py`.
 - **Total:** 1,553 tests with a database reachable; 1,543 passed and 10 skipped without one.
 
