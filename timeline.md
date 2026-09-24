@@ -649,7 +649,7 @@ gantt
 
   section P1 Thin slice
   Survey capture (W4'-1)           :done, p1a0, 2026-09-17, 3d
-  Preferences to q* (W4'-2)        :p1a, after p1a0, 3d
+  Preferences to q* (W4'-2)        :done, p1a, after p1a0, 3d
   Spreadsheet scoring (W3-1)       :p1b, after p1a, 4d
   API survey + shoes (W7-1)        :p1b2, after p1b, 4d
   Frontend foundation (W6-0)       :p1b3, after p1b2, 2d

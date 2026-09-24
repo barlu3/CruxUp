@@ -676,7 +676,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   - regression guards: LOOCV score thresholds; checked-in weights equal `refit()` output
   - anchor agreement
   - numpy is imported unconditionally, so the regression guards cannot be silently skipped
-- **`backend/tests/test_survey.py`** — 146 tests:
+- **`backend/tests/test_survey.py`** — 155 tests:
   - schema drift: the five CHECK vocabularies are parsed out of `0001_init.sql`
     and compared, with a self-check so the parser cannot pass vacuously
   - domains: enum membership, numeric range *and* scale, float-noise tolerance
@@ -704,13 +704,13 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
     over-large integer `goal`; read-only tables; the import-time invariant check
     fails for bad constants, including under `python -O`
   - golden values with hand-checked arithmetic
-- **Database-backed tests are opt-in by reachability.** Seven tests use a live
+- **Database-backed tests are opt-in by reachability.** Ten tests use a live
   PostgreSQL when one is available and skip cleanly when it is not, so the default
   suite stays hermetic. Each rolls back and asserts it left `user_survey` empty.
   This is the first automated database coverage in the project; migration
   apply/reverse remains manual (`SETUP.md` §3).
 - **Stub test files:** `test_fit.py`, `test_aggregate.py`, `test_calibration.py`.
-- **Total:** 1,544 tests with a database reachable; 1,537 passed and 7 skipped without one.
+- **Total:** 1,553 tests with a database reachable; 1,543 passed and 10 skipped without one.
 
 ---
 
@@ -768,13 +768,13 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 These commands re-check the mechanically verifiable claims in this document:
 
 ```bash
-python3 -m pytest backend/tests/ -q                              # 1544 passed (database reachable)
+python3 -m pytest backend/tests/ -q                              # 1553 passed (database reachable)
 python3 -m pytest backend/tests/test_collector.py -q             # 25 passed
 python3 -m pytest backend/tests/test_priors.py -q                # 39 passed
-python3 -m pytest backend/tests/test_survey.py -q                # 146 passed
+python3 -m pytest backend/tests/test_survey.py -q                # 155 passed
 python3 -m pytest backend/tests/test_preferences.py -q           # 1334 passed
 DATABASE_URL=postgresql://localhost:1/nope \
-  python3 -m pytest backend/tests/ -q                            # 1537 passed, 7 skipped — the suite is hermetic
+  python3 -m pytest backend/tests/ -q                            # 1543 passed, 10 skipped — the suite is hermetic
 python3 backend/app/catalog/validate.py | tail -1                # catalogue valid
 python3 backend/app/catalog/priors.py --refit | head -2          # LOOCV  MAE x = 0.139  MAE y = 0.113  agreement = 87%
 psql -d <db> -f backend/app/db/migrations/0001_init.sql          # applies clean on an empty database
