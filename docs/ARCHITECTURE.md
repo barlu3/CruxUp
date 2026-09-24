@@ -22,7 +22,7 @@ A reference for the structure, data model and design of the CruxUp climbing shoe
 - **Placement provenance.** A shoe's position has one of three sources, ranked by confidence: **corpus** (aggregated community discussion) > **hand** (human judgement) > **spec** (derived from manufacturer specifications). The source is stored with every placement.
 - **Build state:**
   - **Implemented:** the product database schema, the shoe catalogue and its validator, a spec-to-placement model, the catalogue loader, environment configuration, and a source-agnostic corpus collector.
-  - **Not implemented:** the HTTP API, survey logic, the recommendation scorer, NLP extraction and aggregation, evaluation, and the entire web frontend. These exist as documented stubs (§7).
+  - **Not implemented:** the HTTP API, preference→target derivation, the recommendation scorer, NLP extraction and aggregation, evaluation, and the entire web frontend. These exist as documented stubs (§7). Survey *capture* — validation, anchor resolution and persistence — is implemented (§4.7); only the HTTP surface over it is absent.
 - **Current binding constraint:** **no corpus source is cleared.** YouTube collection failed a terms review, Reddit access is pending, and forum terms are unreviewed (`timeline.md` §10.2; D11 reopened). The planned first release (D7) is designed to work **without** a corpus, on hand- and spec-derived placements.
 
 ---
@@ -101,7 +101,7 @@ flowchart LR
 | `backend/app/scraping/collector.py` | Collector, sources, quota ledger, landing store | Implemented |
 | `backend/app/scraping/{sources,youtube,reddit,rate_limiter,compile,mentions}.py` | Originally planned per-module split for collection | Stub (§7) |
 | `backend/app/main.py`, `backend/app/api/routes/` | FastAPI app and routes | Stub |
-| `backend/app/survey/` | Survey schema; preferences → target | Stub |
+| `backend/app/survey/` | Survey capture: `schema.py` validation, `anchors.py` catalogue resolution, `store.py` persistence | Implemented (§4.7); `preferences.py` stub |
 | `backend/app/recommend/` | Fit, style, score, confidence | Stub |
 | `backend/app/nlp/` | Extraction, aggregation, lexicon, distillation | Stub |
 | `backend/app/eval/` | Calibration and metrics | Stub |
@@ -234,6 +234,80 @@ flowchart LR
 - `INSERT OR IGNORE` on the primary key makes collection idempotent across restarts.
 - The landing store holds raw payloads. Normalising them into the PostgreSQL corpus schema is planned (W1-full). **Retention is set by each source's terms** — YouTube caps stored data at 30 days.
 - The store is gitignored (`backend/data/*.sqlite3`) and **currently empty**.
+
+---
+
+### 4.7 Survey capture — `backend/app/survey/`
+
+Loads one questionnaire submission into `user_survey`. It adds no DDL: the table
+and its CHECK constraints already exist in `0001_init.sql`, and this layer is the
+validation and loading path in front of them.
+
+#### Structure
+- **`schema.py`** — `validate(payload) -> list[str]`. Scalar fields and top-level
+  shape only; accumulates every problem rather than raising on the first, matching
+  `catalog/validate.py`. CLI: `python3 backend/app/survey/schema.py <payload.json>`.
+- **`anchors.py`** — resolves anchor sets *G* (`known_good_shoes`) and *B*
+  (`known_bad_shoes`) against the catalogue.
+  - **`CatalogLookup`** (Protocol) with two implementations: **`StaticCatalog`**
+    (in-memory, used by the hermetic tests) and **`PostgresCatalog`** (reads
+    `shoe` / `shoe_alias` from an already-open connection, never opening its own).
+  - **`CatalogShoe`** (frozen dataclass) projects exactly `shoe_unique_identity`
+    plus the id.
+  - `resolve_anchors(good, bad, catalog)` returns resolved lists plus errors.
+- **`store.py`** — `build_survey_row()` merges both validation stages into one
+  error list; `insert_survey()` writes one row in a single transaction. CLI:
+  `python3 backend/app/survey/store.py <payload.json> [--dry-run]`.
+
+#### Vocabularies and the schema they mirror
+`schema.ENUMS` mirrors five CHECK constraints (`survey_width_valid`,
+`survey_instep_valid`, `survey_toe_valid`, `survey_arch_valid`,
+`survey_disc_valid`). A test parses those constraints back out of the migration
+and asserts equality, so the two cannot drift silently.
+
+`heel_fit`, `terrain` and `level` have **no** CHECK constraint in the schema, so
+they are validated only in Python (`schema.PY_ONLY_ENUMS`). This asymmetry is
+deliberate and tracked — see §12.
+
+#### Resolution rules
+- Matching is case-insensitive on `(brand, model)`, narrowed by an optional
+  `version` and/or `gender`.
+- **An ambiguous name is an error, never a guess.** Three catalogue entries share
+  a `(brand, model)` pair and differ only by version — Scarpa Instinct (VS/VSR),
+  La Sportiva Katana (Lace/Velcro), La Sportiva Solution (base/Comp). Two are §3
+  calibration anchors, so silently picking one would corrupt calibration-grade
+  input. The error lists every candidate.
+- A registered `shoe_alias` used as the `model` is an unambiguous disambiguator,
+  because `shoe_alias_globally_unique` is unique across the catalogue. It is tried
+  only when the identity match found nothing, so a bare shared name stays
+  ambiguous regardless of whether it happens to also be an alias.
+- `size` is opaque to the catalogue: it is never gated against `shoe_size_map`
+  (D9 makes `size_exists` the only hard sizing gate, decided downstream).
+- The same shoe in both *G* and *B* is contradictory and is rejected.
+
+#### Input constraints
+- **Allow-lists, not deny-lists.** Unknown top-level keys and unknown anchor
+  sub-keys are rejected outright, so an identifier cannot ride into storage
+  through an unmodelled field (D4). `shoe_id` is an *output* of resolution and is
+  refused as an input, so a caller cannot point an anchor at an arbitrary shoe.
+- **`size` is bounded in length and character set.** A length cap alone is not
+  sufficient — an email address is short — so the characters a brand size is
+  actually written with are enumerated, which rejects an address on `@`.
+- Free text is rejected if it carries a NUL byte or a lone UTF-16 surrogate;
+  both are representable in a Python string but not storable, and would otherwise
+  surface as an exception from inside the driver rather than a validation error.
+- The number of anchors per submission is capped, because each one costs a
+  catalogue round trip. The cap short-circuits resolution, so an oversized
+  submission performs no lookups at all.
+- Numeric fields are checked against their column **scale**, not merely their
+  range: PostgreSQL silently *rounds* a value that exceeds a `NUMERIC` scale
+  rather than rejecting it, so a submission could otherwise validate clean and be
+  stored as a different number. The comparison carries a float tolerance, because
+  `q*` is computed upstream and binary-float noise is expected.
+
+#### Identity
+`survey_token` is generated with `secrets.token_urlsafe` (CSPRNG) and is the only
+identity written. It is never accepted from a submission.
 
 ---
 
@@ -374,7 +448,16 @@ erDiagram
 2. For each available source and query: reserve quota → request → hash authors → `INSERT OR IGNORE` the documents → record the run.
 3. On quota exhaustion, the source returns partial results and collection moves on.
 
-### 6.4 Recommendation (planned)
+### 6.4 Capturing a survey
+1. `schema.validate()` checks scalar fields and shape — no catalogue or database
+   needed, so an invalid submission is rejected before a connection is opened.
+2. `anchors.resolve_anchors()` resolves each anchor to a `shoe.id` against the
+   catalogue, or reports an unknown, ambiguous or contradictory entry.
+3. Both error lists are merged, so a caller sees every problem in one round trip.
+4. A `survey_token` is generated and the row is inserted in one transaction;
+   `--dry-run` exercises the whole path, including JSONB adaptation, then rolls back.
+
+### 6.5 Recommendation (planned)
 - A survey (fit inputs, anchor shoes, preferences) yields a target `q*`.
 - The scorer combines Fit, Style and Budget, gates on `size_exists` and price, and ranks the results.
 - Each result carries a confidence driven by `prior_source`, mention count and agreement, and is written as a `recommendation` row under the active `scorer_version`.
@@ -388,13 +471,13 @@ Each stub holds a one-line docstring naming its intended responsibility and task
 
 | Stub | Docstring intent | Current design (overrides the docstring) |
 |---|---|---|
-| `backend/app/main.py` | FastAPI entrypoint mounting routes | — |
-| `api/routes/survey.py` | `POST /survey` → persist survey, derive q* | — |
-| `api/routes/recommend.py` | `POST /recommend` → ranked results + confidence | — |
-| `api/routes/shoes.py` | `GET /shoes`, `/shoes/{id}` | — |
+| `backend/app/main.py` | FastAPI entrypoint mounting routes | Owned by **W7-1**. `fastapi` and `uvicorn` are declared but not yet imported anywhere |
+| `api/routes/survey.py` | `POST /survey` → persist survey, derive q* | Owned by **W7-1**. A thin wrapper only: `survey/store.py` already validates and persists, and duplicating rules here would let them drift |
+| `api/routes/recommend.py` | `POST /recommend` → ranked results + confidence | Owned by **W7-2**, after the scorer exists (W3-3) |
+| `api/routes/shoes.py` | `GET /shoes`, `/shoes/{id}` | Owned by **W7-1**. Backs the anchor picker, so it must return `version` and `gender` — three catalogue pairs share `(brand, model)` and the UI cannot disambiguate without them |
 | `db/client.py` | Supabase/Postgres client | Implemented code uses `psycopg` directly against `DATABASE_URL`, which keeps the database portable |
 | `db/models.py` | Typed models mirroring migrations; cites "PROJECT_PLAN §8" | That file does not exist; the schema of record is `timeline.md` §8 and `0001_init.sql` |
-| `survey/schema.py`, `survey/preferences.py` | Fit inputs + anchors; preferences → q* | — |
+| `survey/preferences.py` | Preferences → q* | Still a stub. `survey/schema.py` is implemented (§4.7) |
 | `recommend/fit.py`, `style.py`, `confidence.py` | §7.2, §7.3, §7.7 | Confidence must reflect `prior_source` |
 | `recommend/score.py` | "gated by size & price" | The size gate is `size_exists` only (D9); weights are set by judgement, not tuned (§7.6) |
 | `catalog/sizing.py` | "Hard gate in scoring" | **Superseded by D9** — a downsizing mismatch is a warning; only `size_exists` excludes |
@@ -425,6 +508,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - **Source-agnostic collection** (D11). No single data source is load-bearing; sources are pluggable adapters that may be unavailable.
 - **Non-commercial and advertising-free** (D11). The product carries no advertising. Using free API tiers under non-commercial terms constrains future monetisation for as long as that data is in use.
 - **Privacy by construction** (D4). No images, no biometrics, no personal identifiers; author identity exists only as a keyed pseudonym.
+- **The browser never reaches the service layer directly** (decided 2026-09-21, `timeline.md` §6). The planned data path is browser → Next.js route handler → FastAPI on localhost → PostgreSQL. The frontend talks only to its own origin, so there is no CORS surface and the backend is not addressable from the client. The alternative — querying PostgreSQL from TypeScript — was rejected because it would duplicate the anchor resolution, allow-lists and domain guards that already exist and are tested in Python, leaving two validators to keep in step.
 
 ---
 
@@ -498,14 +582,47 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   - regression guards: LOOCV score thresholds; checked-in weights equal `refit()` output
   - anchor agreement
   - numpy is imported unconditionally, so the regression guards cannot be silently skipped
-- **Database verification** is manual today: apply, probe and reverse the migration against a real PostgreSQL (`SETUP.md` §3). There are no automated database tests.
+- **`backend/tests/test_survey.py`** — 146 tests:
+  - schema drift: the five CHECK vocabularies are parsed out of `0001_init.sql`
+    and compared, with a self-check so the parser cannot pass vacuously
+  - domains: enum membership, numeric range *and* scale, float-noise tolerance
+  - anchors: unknown, ambiguous, alias-disambiguated, case-insensitive,
+    contradictory, and the optional opaque `size`
+  - §7.1: an all-NULL fit profile with anchors alone is accepted, as is an
+    entirely empty submission
+  - input constraints: oversized and out-of-charset `size`, NUL bytes, lone
+    surrogates, anchor-count cap, and a counting catalogue proving a rejected
+    oversized submission performs zero lookups
+  - persistence: CSPRNG token, parameterised insert, commit/rollback, JSONB
+    adaptation
+  - CLI: exit codes for malformed JSON, validation failure, missing
+    `DATABASE_URL`, and an unreachable database
+- **Database-backed tests are opt-in by reachability.** Seven tests use a live
+  PostgreSQL when one is available and skip cleanly when it is not, so the default
+  suite stays hermetic. Each rolls back and asserts it left `user_survey` empty.
+  This is the first automated database coverage in the project; migration
+  apply/reverse remains manual (`SETUP.md` §3).
 - **Stub test files:** `test_fit.py`, `test_aggregate.py`, `test_calibration.py`.
-- **Total:** 64 tests.
+- **Total:** 210 tests with a database reachable; 203 passed and 7 skipped without one.
 
 ---
 
 ## 12. Known gaps and technical debt
 
+- **Survey vocabularies are enforced only in Python.** `heel_fit`, `terrain` and
+  `level` have no CHECK constraint in `user_survey`, unlike the five fields beside
+  them, so a writer bypassing `survey/schema.py` could store any value. The same
+  applies to the `size` length and character-set limits and the anchor count, which
+  live in the loading layer rather than the schema. A follow-up migration should
+  add the missing constraints.
+- **Anchor resolution is one query per anchor.** `PostgresCatalog` issues a lookup
+  per entry rather than one batched query. The per-submission cap bounds this, and
+  at catalogue scale (30 rows now, ~100 under D12) the cost is negligible, but a
+  bulk path would need batching.
+- **`lower(brand)`/`lower(model)` matching cannot use an index.** `shoe_brand_idx`
+  and `shoe_unique_identity` index the raw columns, so identity resolution is a
+  sequential scan. Immaterial at present size; an expression index would be needed
+  well past D12.
 - **Catalogue size band is stale.** `validate.py` enforces 25–30 shoes, reflecting the superseded D6; the target is now ~100 (D12). It must be raised before the catalogue expands.
 - **Refit input filtering in tests.** `test_priors.py` refits on every shoe with coordinates. Once `prior_source: spec` rows exist, it must filter to `hand` rows, as the `--refit` CLI already does, or the model would be fitted partly on its own output.
 - **No prices.** `msrp_usd` is null on every catalogue row, so budget filtering cannot be relied on (`validate.py --require-msrp` fails).
@@ -515,6 +632,8 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - **Legacy dead code:** `backend/scraping/` (`compile.py`, `sources.py`, `NLP_training_data.txt`) and `backend/NLP/` (`processing/NLP.py`, `training/trainer.py`) are empty files from an earlier layout, duplicated by `backend/app/`.
 - **Module split mismatch:** collection sources live in `collector.py`, but stub modules for a per-source split remain under `backend/app/scraping/`.
 - **Migration edited in place:** `0001_init.sql` was changed after first use to add `prior_source`. That is acceptable before any deployment; later changes should be additive migrations.
+- **The frontend cannot build.** `src/app/layout.tsx` and `src/app/page.tsx` are empty files, and the App Router requires a root layout that renders `<html>`/`<body>`. There is also no installed dependency tree (no `node_modules`, no lockfile) and no test runner declared in `package.json`, so no frontend test or end-to-end tooling can run. Tracked as **W6-0**.
+- **No HTTP layer exists.** `fastapi` and `uvicorn` are declared in `backend/requirements.txt` but imported nowhere; `main.py` and all three route modules are one-line stubs. Survey capture is therefore reachable only through its CLI. Tracked as **W7-1**.
 - **Documentation stubs:** `docs/eval-methodology.md` and `docs/lexicon-guide.md` are placeholders, and `README.md` is a single line.
 - **No corpus source is cleared** (§9.2), so the NLP half of the architecture has no permitted input today.
 
@@ -525,9 +644,12 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 These commands re-check the mechanically verifiable claims in this document:
 
 ```bash
-python3 -m pytest backend/tests/ -q                              # 64 passed
+python3 -m pytest backend/tests/ -q                              # 210 passed (database reachable)
 python3 -m pytest backend/tests/test_collector.py -q             # 25 passed
 python3 -m pytest backend/tests/test_priors.py -q                # 39 passed
+python3 -m pytest backend/tests/test_survey.py -q                # 146 passed
+DATABASE_URL=postgresql://localhost:1/nope \
+  python3 -m pytest backend/tests/ -q                            # 203 passed, 7 skipped — the suite is hermetic
 python3 backend/app/catalog/validate.py | tail -1                # catalogue valid
 python3 backend/app/catalog/priors.py --refit | head -2          # LOOCV  MAE x = 0.139  MAE y = 0.113  agreement = 87%
 psql -d <db> -f backend/app/db/migrations/0001_init.sql          # applies clean on an empty database
