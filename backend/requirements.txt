@@ -12,3 +12,4 @@ tenacity
 structlog
 pytest
 numpy  # test dependency: priors.py regression tests refit the model (test_priors.py)
+httpx  # test dependency: fastapi.testclient (test_api.py)
