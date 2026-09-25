@@ -933,6 +933,12 @@ def test_db_insert_dry_run_round_trips_anchors_through_jsonb_and_leaves_no_row(d
     injected = "42.5 EU; O'Brien's pair"
     row["known_good_shoes"][0]["size"] = injected
 
+    # Baseline read, not a literal: the catalog size changes (D12 grows it to
+    # ~100), and the property under test is only that nothing ran, not the size.
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM shoe")
+        (shoes_before,) = cur.fetchone()
+
     with db_conn.cursor() as cur:
         ST._insert_row(cur, row)
         cur.execute(
@@ -948,8 +954,8 @@ def test_db_insert_dry_run_round_trips_anchors_through_jsonb_and_leaves_no_row(d
     # The statement terminator did not end the statement: the catalog is intact.
     with db_conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM shoe")
-        (shoe_count,) = cur.fetchone()
-    assert shoe_count == 30, "the injected ';' must not have executed anything"
+        (shoes_after,) = cur.fetchone()
+    assert shoes_after == shoes_before, "the injected ';' must not have executed anything"
 
     db_conn.rollback()
     with db_conn.cursor() as cur:

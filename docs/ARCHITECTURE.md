@@ -2,7 +2,7 @@
 
 A reference for the structure, data model and design of the CruxUp climbing shoe recommender. It describes the software **as implemented** and marks where the planned design has not been built yet.
 
-- **Last verified against the codebase:** 2026-09-16
+- **Last verified against the codebase:** 2026-09-23
 - **Plan, tasks and decisions of record:** [`timeline.md`](../timeline.md). Decision IDs (D1–D12) and task IDs (W0-1a, …) below refer to it.
 - **Local setup:** [`SETUP.md`](../SETUP.md)
 - **Verification:** the commands at the foot of this document re-check the claims that can be checked mechanically.
@@ -21,8 +21,8 @@ A reference for the structure, data model and design of the CruxUp climbing shoe
   - Q1 performance+stiff · Q2 comfort+stiff · Q3 comfort+soft · Q4 performance+soft
 - **Placement provenance.** A shoe's position has one of three sources, ranked by confidence: **corpus** (aggregated community discussion) > **hand** (human judgement) > **spec** (derived from manufacturer specifications). The source is stored with every placement.
 - **Build state:**
-  - **Implemented:** the product database schema, the shoe catalogue and its validator, a spec-to-placement model, the catalogue loader, environment configuration, and a source-agnostic corpus collector.
-  - **Not implemented:** the HTTP API, preference→target derivation, the recommendation scorer, NLP extraction and aggregation, evaluation, and the entire web frontend. These exist as documented stubs (§7). Survey *capture* — validation, anchor resolution and persistence — is implemented (§4.7); only the HTTP surface over it is absent.
+  - **Implemented:** the product database schema, the shoe catalogue and its validator, a spec-to-placement model, the catalogue loader, environment configuration, a source-agnostic corpus collector, survey capture (§4.7), and preference→target (`q*`) derivation (§4.8).
+  - **Not implemented:** the HTTP API, the recommendation scorer, NLP extraction and aggregation, evaluation, and the entire web frontend. These exist as documented stubs (§7). Survey *capture* — validation, anchor resolution and persistence — is implemented (§4.7), and so is the pure `q*` function (§4.8), but nothing yet connects the two, and there is no HTTP surface over either.
 - **Current binding constraint:** **no corpus source is cleared.** YouTube collection failed a terms review, Reddit access is pending, and forum terms are unreviewed (`timeline.md` §10.2; D11 reopened). The planned first release (D7) is designed to work **without** a corpus, on hand- and spec-derived placements.
 
 ---
@@ -57,6 +57,13 @@ flowchart LR
     LAND[(SQLite landing store<br/>raw_document · collection_run · api_quota)]
   end
 
+  subgraph Survey["Survey layer — implemented"]
+    SCH[schema.py<br/>scalar + shape validation]
+    ANC[anchors.py<br/>anchor resolution]
+    STO[store.py<br/>token + insert]
+    PREF[preferences.py<br/>preferences → q*]
+  end
+
   CFG[config.py<br/>load_dotenv]
 
   YAML --> VAL --> SEED --> SHOE
@@ -67,6 +74,11 @@ flowchart LR
   COLL --> YT & FOR & RED
   YT --> LEDGER --> LAND
   COLL --> LAND
+  SCH --> STO
+  ANC --> STO
+  ANC --> SHOE & ALIAS
+  STO --> SURV
+  PREF -.->|"q*, not yet wired"| STO
 
   API[FastAPI app<br/>main.py + routes]:::planned
   SCORE[recommend/<br/>fit · style · score · confidence]:::planned
@@ -75,7 +87,7 @@ flowchart LR
   WEB[Next.js app<br/>survey · results]:::planned
 
   WEB -.-> API -.-> SCORE -.-> SHOE
-  API -.-> SURV
+  API -.-> STO
   SCORE -.-> REC
   LAND -.-> NLP -.-> SHOE
   EVAL -.-> NLP
@@ -101,11 +113,11 @@ flowchart LR
 | `backend/app/scraping/collector.py` | Collector, sources, quota ledger, landing store | Implemented |
 | `backend/app/scraping/{sources,youtube,reddit,rate_limiter,compile,mentions}.py` | Originally planned per-module split for collection | Stub (§7) |
 | `backend/app/main.py`, `backend/app/api/routes/` | FastAPI app and routes | Stub |
-| `backend/app/survey/` | Survey capture: `schema.py` validation, `anchors.py` catalogue resolution, `store.py` persistence | Implemented (§4.7); `preferences.py` stub |
+| `backend/app/survey/` | Survey capture: `schema.py` validation, `anchors.py` catalogue resolution, `store.py` persistence; `preferences.py` preference → `q*` derivation | Implemented (§4.7, §4.8) |
 | `backend/app/recommend/` | Fit, style, score, confidence | Stub |
 | `backend/app/nlp/` | Extraction, aggregation, lexicon, distillation | Stub |
 | `backend/app/eval/` | Calibration and metrics | Stub |
-| `backend/tests/` | Tests: 2 implemented files, 3 stubs | Partial |
+| `backend/tests/` | Tests: 4 implemented files, 3 stubs | Partial |
 | `backend/data/` | Local data: `gearlab/` placeholder; landing store (gitignored) | Runtime |
 | `src/app/` | Next.js App Router frontend: `page.tsx`, `layout.tsx`, `survey/`, `results/`, `lib/api.ts`, `lib/types.ts` | Stub |
 | `scaffold.sh` | Non-destructive generator for the stub tree (54 `stub` entries; writes only files that do not exist) | Tooling |
@@ -309,6 +321,86 @@ deliberate and tracked — see §12.
 `survey_token` is generated with `secrets.token_urlsafe` (CSPRNG) and is the only
 identity written. It is never accepted from a submission.
 
+### 4.8 Preference → target — `backend/app/survey/preferences.py`
+
+Maps a user's preference answers to `q*`, the point on the quadrant plane their
+recommendations are steered toward (`timeline.md` §7.5). The Style score (§7.3)
+measures each shoe's distance from this point. Pure arithmetic: no database, no
+IO, standard library only.
+
+#### Interface
+- **`target_quadrant(discipline, terrain=None, level=None, goal=None) -> (x, y)`**
+  - `discipline` is required: `boulder`, `sport`, `trad` or `gym`.
+  - `terrain` (`slab`, `vertical`, `overhang`, `crack`) and `level` (`beginner`,
+    `intermediate`, `advanced`, `elite`) are optional.
+  - `goal` is an optional comfort-vs-performance slider value in `[-1, 1]`
+    (−1 comfort, +1 performance).
+  - An omitted input contributes nothing.
+  - The coordinates are rounded to 3 decimal places, the scale of
+    `goal_x_target` / `goal_y_target` (`NUMERIC(4,3)`), so `q*` can be stored
+    without PostgreSQL rounding it again.
+- **`quadrant_of(q) -> "Q1" … "Q4"`** labels a point per §1. It raises on a
+  point that lies on an axis or has a non-finite coordinate.
+  `catalog/priors.quadrant()` classifies shoe placements on the same plane but
+  returns an `ON-AXIS` label instead of raising. It is not shared because
+  `priors.py` depends on PyYAML.
+
+#### Mapping
+Discipline chooses the quadrant. The other inputs only move `q*` *within* it.
+
+| Input | Value | Contribution (x, y) | Rationale (`timeline.md` §3) |
+|---|---|---|---|
+| discipline | `sport` | (+0.55, −0.55) | Q1: performance + stiff |
+| discipline | `trad` | (−0.55, −0.55) | Q2: comfort + stiff |
+| discipline | `gym` | (−0.55, +0.55) | Q3: comfort + soft |
+| discipline | `boulder` | (+0.55, +0.55) | Q4: performance + soft |
+| terrain | `vertical` | (+0.15, −0.15) | toward Q1: technical face, edging |
+| terrain | `crack` | (−0.15, −0.15) | toward Q2: all-day, multi-pitch |
+| terrain | `slab` | (−0.15, +0.15) | toward Q3: slabs |
+| terrain | `overhang` | (+0.15, +0.15) | toward Q4: steep terrain |
+| level | `beginner` → `elite` | x only: −0.15, −0.05, +0.05, +0.15 | beginners sit on the comfort side |
+| goal | `g ∈ [−1, 1]` | x only: 0.15 · g | the comfort ↔ performance axis |
+
+The two magnitudes are named constants, `BASE_MAGNITUDE = 0.55` and
+`NUDGE = 0.15`. The tables are read-only mappings.
+
+#### Invariant: `q*` always lies inside its discipline's quadrant
+On any axis, at most three nudges can oppose the discipline's sign, which caps
+the total at 3 × 0.15 = 0.45. That is less than the 0.55 base, so for **every**
+combination of inputs:
+
+- `|x|` and `|y|` are at least 0.10. `q*` never lies on an axis, where no
+  quadrant is defined, and never crosses into another quadrant.
+- `|x|` and `|y|` are at most 0.55 + 0.45 = 1.00. `q*` stays inside `[-1, 1]²`,
+  and the clamp in the code never changes a value.
+
+This holds by construction, not by clamping. The module checks both
+inequalities when it is imported and raises `RuntimeError` if a change to the
+constants breaks them. The check is an explicit `raise` rather than `assert`,
+because `python -O` removes assert statements.
+
+#### Validation
+- Inputs are checked in the order discipline, terrain, level, goal. The first
+  problem raises `ValueError`, naming the field and its allowed values.
+- A `bool` is not accepted as a number.
+- `goal` must be finite and within `[-1, 1]`. An integer too large to convert to
+  a float is rejected with `ValueError`, not `OverflowError`.
+- Unlike `schema.validate()`, errors are not accumulated. The function sits
+  downstream of submission validation, not in front of a form.
+
+#### Vocabulary
+The function keys its tables to the same vocabularies `survey/schema.py`
+accepts. `preferences.py` does not import `schema.py`, so tests pin the two
+together: the discipline, terrain and level keys, and the output precision
+(`OUTPUT_DECIMALS` = `schema.GOAL_TARGET_DECIMALS`).
+
+#### Not yet modelled
+- **Stiffness preference** and **downsizing/pain tolerance** are listed in §7.5
+  but have no mapping and no `user_survey` column.
+- **The function is not called anywhere.** `store.py` stores `goal_x_target` /
+  `goal_y_target` exactly as supplied. The submission allow-list has no key for
+  the raw `goal` slider, and no column stores it. See §12.
+
 ---
 
 ## 5. Data model (PostgreSQL)
@@ -457,11 +549,14 @@ erDiagram
 4. A `survey_token` is generated and the row is inserted in one transaction;
    `--dry-run` exercises the whole path, including JSONB adaptation, then rolls back.
 
+`goal_x_target` / `goal_y_target` are currently stored exactly as submitted. The
+path does not yet call `preferences.target_quadrant()` (§4.8) to derive them.
+
 ### 6.5 Recommendation (planned)
-- A survey (fit inputs, anchor shoes, preferences) yields a target `q*`.
+- A survey's preference answers yield a target `q*`. The derivation itself is implemented (§4.8); connecting it to capture and to scoring is not.
 - The scorer combines Fit, Style and Budget, gates on `size_exists` and price, and ranks the results.
 - Each result carries a confidence driven by `prior_source`, mention count and agreement, and is written as a `recommendation` row under the active `scorer_version`.
-- None of this is implemented.
+- Apart from the `q*` function, none of this is implemented.
 
 ---
 
@@ -472,12 +567,11 @@ Each stub holds a one-line docstring naming its intended responsibility and task
 | Stub | Docstring intent | Current design (overrides the docstring) |
 |---|---|---|
 | `backend/app/main.py` | FastAPI entrypoint mounting routes | Owned by **W7-1**. `fastapi` and `uvicorn` are declared but not yet imported anywhere |
-| `api/routes/survey.py` | `POST /survey` → persist survey, derive q* | Owned by **W7-1**. A thin wrapper only: `survey/store.py` already validates and persists, and duplicating rules here would let them drift |
+| `api/routes/survey.py` | `POST /survey` → persist survey, derive q* | Owned by **W7-1**. A thin wrapper only: `survey/store.py` already validates and persists and `survey/preferences.py` already derives `q*`, and duplicating rules here would let them drift. How the raw `goal` slider reaches `target_quadrant()` is still open (§12) |
 | `api/routes/recommend.py` | `POST /recommend` → ranked results + confidence | Owned by **W7-2**, after the scorer exists (W3-3) |
 | `api/routes/shoes.py` | `GET /shoes`, `/shoes/{id}` | Owned by **W7-1**. Backs the anchor picker, so it must return `version` and `gender` — three catalogue pairs share `(brand, model)` and the UI cannot disambiguate without them |
 | `db/client.py` | Supabase/Postgres client | Implemented code uses `psycopg` directly against `DATABASE_URL`, which keeps the database portable |
 | `db/models.py` | Typed models mirroring migrations; cites "PROJECT_PLAN §8" | That file does not exist; the schema of record is `timeline.md` §8 and `0001_init.sql` |
-| `survey/preferences.py` | Preferences → q* | Still a stub. `survey/schema.py` is implemented (§4.7) |
 | `recommend/fit.py`, `style.py`, `confidence.py` | §7.2, §7.3, §7.7 | Confidence must reflect `prior_source` |
 | `recommend/score.py` | "gated by size & price" | The size gate is `size_exists` only (D9); weights are set by judgement, not tuned (§7.6) |
 | `catalog/sizing.py` | "Hard gate in scoring" | **Superseded by D9** — a downsizing mismatch is a warning; only `size_exists` excludes |
@@ -582,7 +676,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   - regression guards: LOOCV score thresholds; checked-in weights equal `refit()` output
   - anchor agreement
   - numpy is imported unconditionally, so the regression guards cannot be silently skipped
-- **`backend/tests/test_survey.py`** — 146 tests:
+- **`backend/tests/test_survey.py`** — 155 tests:
   - schema drift: the five CHECK vocabularies are parsed out of `0001_init.sql`
     and compared, with a self-check so the parser cannot pass vacuously
   - domains: enum membership, numeric range *and* scale, float-noise tolerance
@@ -597,13 +691,31 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
     adaptation
   - CLI: exit codes for malformed JSON, validation failure, missing
     `DATABASE_URL`, and an unreachable database
-- **Database-backed tests are opt-in by reachability.** Seven tests use a live
+- **`backend/tests/test_preferences.py`** — 1,334 tests (30 functions, mostly
+  parametrised):
+  - §7.5 acceptance: each discipline alone lands in its §3 quadrant
+  - exhaustive: all 600 combinations of discipline × terrain (4 + omitted) ×
+    level (4 + omitted) × `goal` (5 values + omitted) stay inside `[-1, 1]²`, at least
+    0.10 from both axes, and in the discipline's quadrant
+  - storability: the same 600 outputs pass `schema.validate()`
+  - vocabulary pins against `schema.py`, direction of every nudge, monotonic
+    `level` and `goal`, and `level`/`goal` leaving `y` unchanged
+  - rejections, including `bool`, numeric strings, NaN, ±∞, out-of-range and
+    over-large integer `goal`; read-only tables; the import-time invariant check
+    fails for bad constants, including under `python -O`
+  - golden values with hand-checked arithmetic
+- **Database-backed tests are opt-in by reachability.** Ten tests use a live
   PostgreSQL when one is available and skip cleanly when it is not, so the default
   suite stays hermetic. Each rolls back and asserts it left `user_survey` empty.
   This is the first automated database coverage in the project; migration
   apply/reverse remains manual (`SETUP.md` §3).
+- **Continuous integration** (`.github/workflows/ci.yml`, GitHub Actions; runs on pushes to `main`, on pull requests, and manually):
+  - `unit` — Python 3.10 and 3.12, no database. Validates the catalogue, then runs the suite with an unreachable `DATABASE_URL`, proving the DB-backed tests skip rather than fail.
+  - `integration` — a PostgreSQL 16 service container. Applies `0001_init.sql`, reverses it and checks zero tables remain, re-applies it, seeds the catalogue, runs the full suite, and **fails if any test skipped**, since a skip with a database present means the setup broke. It then checks `user_survey` is empty.
+  - There is no frontend job yet: the app cannot build (§12). There is no deploy stage, because there is no hosting target.
+  - The migration apply/reverse check is automated here; `SETUP.md` §3 remains the manual procedure for a local database.
 - **Stub test files:** `test_fit.py`, `test_aggregate.py`, `test_calibration.py`.
-- **Total:** 210 tests with a database reachable; 203 passed and 7 skipped without one.
+- **Total:** 1,553 tests with a database reachable; 1,543 passed and 10 skipped without one.
 
 ---
 
@@ -623,6 +735,23 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   and `shoe_unique_identity` index the raw columns, so identity resolution is a
   sequential scan. Immaterial at present size; an expression index would be needed
   well past D12.
+- **`q*` is not connected to capture.** `survey/preferences.py` is implemented
+  and tested, but no caller uses it. Two further gaps have to be closed before
+  it is:
+  - The submission allow-list (`schema.ALLOWED_KEYS`) has no key for the raw
+    comfort-vs-performance `goal`, so a payload carrying one is rejected today.
+    The endpoint would have to convert `goal` to `goal_x_target` /
+    `goal_y_target` before validation, or the schema would have to accept it.
+  - `user_survey` stores the derived `q*` but not the raw `goal`. A stored
+    target therefore cannot be recomputed exactly if the mapping constants
+    change later.
+
+  The planned owner is W7-1's `POST /survey`, but that task does not yet
+  depend on W4'-2.
+- **Two quadrant classifiers.** `catalog/priors.quadrant()` and
+  `survey/preferences.quadrant_of()` both label points on the same plane. They
+  differ on axis points: the first returns `ON-AXIS`, the second raises. They
+  are kept apart because `preferences.py` must not depend on PyYAML.
 - **Catalogue size band is stale.** `validate.py` enforces 25–30 shoes, reflecting the superseded D6; the target is now ~100 (D12). It must be raised before the catalogue expands.
 - **Refit input filtering in tests.** `test_priors.py` refits on every shoe with coordinates. Once `prior_source: spec` rows exist, it must filter to `hand` rows, as the `--refit` CLI already does, or the model would be fitted partly on its own output.
 - **No prices.** `msrp_usd` is null on every catalogue row, so budget filtering cannot be relied on (`validate.py --require-msrp` fails).
@@ -644,12 +773,13 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 These commands re-check the mechanically verifiable claims in this document:
 
 ```bash
-python3 -m pytest backend/tests/ -q                              # 210 passed (database reachable)
+python3 -m pytest backend/tests/ -q                              # 1553 passed (database reachable)
 python3 -m pytest backend/tests/test_collector.py -q             # 25 passed
 python3 -m pytest backend/tests/test_priors.py -q                # 39 passed
-python3 -m pytest backend/tests/test_survey.py -q                # 146 passed
+python3 -m pytest backend/tests/test_survey.py -q                # 155 passed
+python3 -m pytest backend/tests/test_preferences.py -q           # 1334 passed
 DATABASE_URL=postgresql://localhost:1/nope \
-  python3 -m pytest backend/tests/ -q                            # 203 passed, 7 skipped — the suite is hermetic
+  python3 -m pytest backend/tests/ -q                            # 1543 passed, 10 skipped — the suite is hermetic
 python3 backend/app/catalog/validate.py | tail -1                # catalogue valid
 python3 backend/app/catalog/priors.py --refit | head -2          # LOOCV  MAE x = 0.139  MAE y = 0.113  agreement = 87%
 psql -d <db> -f backend/app/db/migrations/0001_init.sql          # applies clean on an empty database
