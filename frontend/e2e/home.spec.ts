@@ -9,8 +9,11 @@ test("home page links through to the survey", async ({ page }) => {
 });
 
 // A 404 also lands on /survey, so the URL check alone cannot catch a missing
-// route. W6-1 replaces this with an assertion on the questionnaire itself.
-test("survey route is served", async ({ request }) => {
+// route; assert the questionnaire itself is rendered.
+test("survey route is served", async ({ page, request }) => {
   const response = await request.get("/survey");
   expect(response.status()).toBe(200);
+  await page.goto("/survey");
+  await expect(page).toHaveTitle("Questionnaire | CruxUp");
+  await expect(page.getByRole("heading", { level: 1, name: "Questionnaire" })).toBeVisible();
 });

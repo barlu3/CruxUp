@@ -1,0 +1,212 @@
+[
+    {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "brand": "Black Diamond",
+        "model": "Momentum",
+        "version": "",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "brand": "Butora",
+        "model": "Altura",
+        "version": "",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "brand": "Evolv",
+        "model": "Astroman",
+        "version": "",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "brand": "Evolv",
+        "model": "Defy",
+        "version": "",
+        "gender": "mens"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000005",
+        "brand": "Evolv",
+        "model": "Elektra",
+        "version": "",
+        "gender": "womens"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "brand": "Evolv",
+        "model": "Shaman",
+        "version": "",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000007",
+        "brand": "Five Ten",
+        "model": "Anasazi",
+        "version": "Pro",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000008",
+        "brand": "Five Ten",
+        "model": "Hiangle",
+        "version": "",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000009",
+        "brand": "Five Ten",
+        "model": "Moccasym",
+        "version": "",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000010",
+        "brand": "La Sportiva",
+        "model": "Aragon",
+        "version": "",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000011",
+        "brand": "La Sportiva",
+        "model": "Katana",
+        "version": "Lace",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000012",
+        "brand": "La Sportiva",
+        "model": "Katana",
+        "version": "Velcro",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000013",
+        "brand": "La Sportiva",
+        "model": "Miura",
+        "version": "VS",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000014",
+        "brand": "La Sportiva",
+        "model": "Mythos",
+        "version": "",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000015",
+        "brand": "La Sportiva",
+        "model": "Skwama",
+        "version": "",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "brand": "La Sportiva",
+        "model": "Solution",
+        "version": "",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000017",
+        "brand": "La Sportiva",
+        "model": "Solution",
+        "version": "Comp",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000018",
+        "brand": "La Sportiva",
+        "model": "Tarantulace",
+        "version": "",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000019",
+        "brand": "La Sportiva",
+        "model": "TC Pro",
+        "version": "",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000020",
+        "brand": "La Sportiva",
+        "model": "Testarossa",
+        "version": "",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000021",
+        "brand": "La Sportiva",
+        "model": "Theory",
+        "version": "",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000022",
+        "brand": "Scarpa",
+        "model": "Drago",
+        "version": "",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000023",
+        "brand": "Scarpa",
+        "model": "Instinct",
+        "version": "VS",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000024",
+        "brand": "Scarpa",
+        "model": "Instinct",
+        "version": "VSR",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000025",
+        "brand": "Scarpa",
+        "model": "Maestro",
+        "version": "Mid",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000026",
+        "brand": "Scarpa",
+        "model": "Origin",
+        "version": "",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000027",
+        "brand": "Scarpa",
+        "model": "Vapor",
+        "version": "Lace",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000028",
+        "brand": "Tenaya",
+        "model": "Iati",
+        "version": "",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000029",
+        "brand": "Tenaya",
+        "model": "Oasi",
+        "version": "",
+        "gender": "unisex"
+    },
+    {
+        "id": "00000000-0000-4000-8000-000000000030",
+        "brand": "Tenaya",
+        "model": "Tanta",
+        "version": "",
+        "gender": "unisex"
+    }
+]

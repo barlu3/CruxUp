@@ -138,7 +138,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm test
+      - run: npm run test:coverage
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       # CI=true (set by GitHub) makes Playwright serve the build via `next start`.
