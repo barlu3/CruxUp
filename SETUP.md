@@ -210,7 +210,7 @@ Checks (the CI `frontend` job runs the same steps, in this order):
 ```bash
 npm run lint       # ESLint; expect no errors and no warnings
 npm run typecheck  # tsc --noEmit
-npm test           # Vitest + React Testing Library: src/**/*.test.tsx
+npm run test:coverage  # Vitest + React Testing Library, with coverage thresholds
 npm run build      # production build; next build does not run ESLint
 npm run test:e2e   # Playwright: e2e/*.spec.ts, Chromium only
 ```
@@ -221,16 +221,42 @@ Before the first Playwright run, download its browser:
 npx playwright install chromium
 ```
 
-- Playwright starts its own server on **port 3100**, so it does not collide
-  with `npm run dev` on 3000. Locally that server is `next dev`; a server
-  already listening on 3100 is reused.
+- Playwright starts its own servers: the app on **port 3100**, so it does not
+  collide with `npm run dev` on 3000, and a mock of the API on **port 8100**
+  (`e2e/mock-api.mjs`). **The end-to-end tests need neither the real API nor
+  Postgres.** Locally the app server is `next dev`; a server already listening
+  on 3100 is reused, so stop any stray one that was started without
+  `CRUXUP_API_URL` pointing at the mock.
 - `CI=1 npm run test:e2e` serves the production build with `next start`
   instead, as CI does. Run `npm run build` first.
-- `npm run test:watch` re-runs Vitest on save. `npm run test:coverage` writes a
-  V8 coverage report to `coverage/` (no thresholds yet).
+- `npm test` runs Vitest without coverage. `npm run test:watch` re-runs it on
+  save. `npm run test:coverage` writes a V8 report to `coverage/` and fails
+  below 80% lines, statements and functions, or 75% branches, in
+  `src/app/{api,components,lib}`.
 
-Only the home page has content so far. `/survey` and `/results` are
-placeholders (W6-1, W6-3).
+### Using the questionnaire with the real API
+
+`/survey` is the questionnaire. The browser only ever calls the app's own
+`/api/shoes` and `/api/survey`, and those route handlers forward the requests
+to the API server-side. To use it end to end:
+
+1. Start the API (§7). Its default address, `http://127.0.0.1:8000`, is also
+   the route handlers' default.
+2. If the API runs elsewhere, set `CRUXUP_API_URL` for the Next.js server, for
+   example in `frontend/.env.local` (see `frontend/.env.example`). It is read
+   only on the server, never by the browser.
+3. `npm run dev`, then open http://localhost:3000/survey.
+
+- **A successful submission commits a row to `user_survey`,** just like
+  `POST /survey` in §7. Delete test rows afterwards.
+- If the API is not running, the shoe pickers say "The shoe list could not be
+  loaded" and offer **Try again**, which works once the API is up. A submission
+  meanwhile shows "Something went wrong sending your answers" (the route handler
+  returns 502).
+- The route handler accepts only JSON bodies, so `curl` needs
+  `-H 'content-type: application/json'`; anything else gets 415.
+
+`/results` is still a placeholder (W6-3).
 
 > **Running `next dev` from a coding agent** (Claude Code, Cursor and similar)
 > makes Next.js 16.3 write `AGENTS.md` and `CLAUDE.md` into `frontend/`, or

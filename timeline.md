@@ -4,7 +4,7 @@
 **Status:** Active. Supersedes v2.0 (2026-05-25).
 **Last updated:** 2026-10-01
 **Change basis:** v3.0 was the feasibility review of all 22 backlog tasks (§2.1). v3.1 adds D11 and D12, records what has actually been built (§2.0), and folds in two findings measured from the first live collection run — the mention-attribution problem (W1-3) and the $N_{\min}$ reachability problem (W2-3). **v3.2** closes a structural gap found while sequencing W6-1: the HTTP layer (**W7**) and the frontend build foundation (**W6-0**) were assumed by the scaffold but carried no task ID, so the plan showed W6-1 as startable when two prerequisites did not exist. See §15.
-**Progress:** 8 of 37 tasks complete (2 deferred). W1-0b is **not** complete: its collection path failed the YouTube terms review (§10.2). See §2.0.
+**Progress:** 9 of 37 tasks complete (2 deferred). W1-0b is **not** complete: its collection path failed the YouTube terms review (§10.2). See §2.0.
 
 ---
 
@@ -61,7 +61,7 @@ The original availability-based recommendation angle was **dropped**. The engine
 
 Audited against files on disk and verified runs, not against memory.
 
-**Complete — 8 of 37 backlog tasks** (37 since v3.2 added W6-0, W7-1, W7-2):
+**Complete — 9 of 37 backlog tasks** (37 since v3.2 added W6-0, W7-1, W7-2):
 
 | Task | Evidence |
 |---|---|
@@ -72,6 +72,7 @@ Audited against files on disk and verified runs, not against memory.
 | W4'-1 survey capture (2026-09-17) | `survey/{schema,anchors,store}.py`. 146 tests; anchors resolve against the seeded catalog and reject unknown *and ambiguous* pairs; no DDL added. Reviewed 2026-09-20 (database / python / security). |
 | W4'-2 preferences → $\mathbf{q}^*$ (2026-09-23) | `survey/preferences.py`, a pure stdlib function. Every discipline lands in its §3 quadrant, and $\mathbf{q}^*$ stays inside $[-1,1]^2$ and off both axes for all 600 enum combinations (1334 tests). Reviewed (python). **Not yet wired into capture** — see §13. |
 | W7-1 API: `POST /survey` + `GET /shoes` (2026-09-25) | `main.py`, `api/deps.py`, `api/routes/{survey,shoes}.py`; 57 tests. `POST /survey` adds no validation of its own: its 422 list equals `build_survey_row()`'s, and a test pins that FastAPI validates nothing on the route. A valid submission returns only `survey_token`. `GET /shoes` returns `version`/`gender`, and every item round-trips to its own id. Reviewed (python, 2 rounds; security). **$\mathbf{q}^*$ still not wired** — see §13. |
+| W6-1 questionnaire UI (2026-10-01) | `/survey`: fit, preference and budget inputs, and two catalogue-backed anchor pickers. Two Next.js route handlers relay to the API server-side. Verified against the real API and Postgres by keyboard alone: Instinct VSR and the base Solution resolve to their own `shoe_id`; an anchors-only answer is stored with every fit field NULL; the browser never calls the API. 127 Vitest + 13 Playwright tests, with axe WCAG 2 A/AA scans in six states. Reviewed (typescript; then react, a11y — WCAG 2.2 AA — and security, whose 2 HIGH a11y findings are fixed). **No goal input** — see §13. |
 | W6-0 frontend foundation (2026-10-01) | `layout.tsx`, `page.tsx`, a committed `package-lock.json`, Vitest + React Testing Library, Playwright, and a CI `frontend` job. `npm run build` prerenders all four routes; 2 Vitest and 2 Playwright tests pass, the latter against both `next dev` and the production build; lint and type-check are clean. `next` was raised 16.2.4 → 16.3.8 to clear critical advisories (`npm audit`: 0). Reviewed (typescript). |
 
 **Built but not on the backlog** — support the above, worth naming so they are not re-scoped later:
@@ -85,7 +86,11 @@ Audited against files on disk and verified runs, not against memory.
 
 **Not started:** everything else. The thin slice (D7) now has its data layer, survey capture, the $\mathbf{q}^*$ target function, an HTTP surface for capture and the catalog, and a frontend that builds and has a test harness, but no scorer and no product UI: the survey and results pages are placeholders. `api/routes/recommend.py`, `recommend/`, `nlp/` and `eval/` are still stubs.
 
-**Nearest unblocks (refreshed 2026-10-01):** both prerequisites of **W6-1** are done, W7-1 (2026-09-25) and W6-0 (2026-10-01), so W6-1 is the head of the critical path to a shippable slice. W7-1 shipped without deciding how the raw comfort-vs-performance answer reaches `target_quadrant()` (§13). That decision now gates W6-1's questionnaire, which has to know what to send. W1-0a remains one hour of paperwork gating a 2–4 week queue. W5-1c/W5-1d are mechanical and gate the §7.6 budget gate.
+**Nearest unblocks (refreshed 2026-10-01):** W6-1 is done (2026-10-01), so the thin slice can now capture surveys from a browser. The remaining slice work is:
+- **W6-2** (quadrant) and **W3-1** (spreadsheet scoring), which both depend only on W5-1a and can start now;
+- **W6-3** (results), which needs both of them and the §13 scorer decision.
+
+The questionnaire shipped **without** the comfort-vs-performance goal, because how that answer reaches `target_quadrant()` is still undecided (§13). It collects discipline, terrain and level, which `target_quadrant()` accepts without a goal. W1-0a remains one hour of paperwork gating a 2–4 week queue. W5-1c/W5-1d are mechanical and gate the §7.6 budget gate.
 
 ### 2.1 Review disposition (2026-09-07)
 
@@ -620,7 +625,7 @@ The collector must therefore be written source-agnostic from the first commit �
 | ID | Task | Deps | Effort | Notes |
 |---|---|---|---|---|
 | ~~W6-0~~ | ~~Frontend foundation: install deps, root layout, test harness~~ | — | 2d | **DONE 2026-10-01, reviewed (typescript).** Root layout and home page; npm lockfile committed; Vitest + React Testing Library (`src/**/*.test.tsx`) and Playwright (`e2e/`, Chromium, port 3100); CI `frontend` job. `next` pinned at 16.3.8 — the scaffolded 16.2.4 carried critical advisories. W6-1 inherits both test layers. The app was then moved from the repository root into `frontend/` (same day). |
-| W6-1 | Questionnaire UI | W4'-2, **W7-1**, **W6-0** | 1–2w | **In the thin slice.** Anchor picker needs catalog autocomplete, not free text — so it depends on `GET /shoes` (W7-1), which must expose `version`/`gender` or the UI recreates the ambiguity W4'-1 rejects server-side. |
+| ~~W6-1~~ | ~~Questionnaire UI~~ | W4'-2, **W7-1**, **W6-0** | 1–2w | **DONE 2026-10-01, reviewed (typescript).** `frontend/src/app/survey`, two route handlers (`/api/shoes`, `/api/survey`) relaying server-side, and an accessible catalogue combobox. All three acceptance criteria were verified against the real API and Postgres. The goal input is deferred to the §13 decision. Original scope: **In the thin slice.** Anchor picker needs catalog autocomplete, not free text — so it depends on `GET /shoes` (W7-1), which must expose `version`/`gender` or the UI recreates the ambiguity W4'-1 rejects server-side. |
 | W6-2 | Interactive quadrant | W5-1a | 1w static + 1w interactive | **Moved from second-to-last into the thin slice.** Hand-placed shoes test the product hypothesis with no corpus. |
 | W6-3 | Results + confidence display | W6-2, W3-1 | 1w | Low-confidence results visibly distinct; gated-out shoes never shown. |
 
@@ -655,7 +660,7 @@ gantt
   Spreadsheet scoring (W3-1)       :p1b, after p1a, 4d
   API survey + shoes (W7-1)        :done, p1b2, after p1b, 4d
   Frontend foundation (W6-0)       :done, p1b3, 2026-10-01, 1d
-  Questionnaire UI (W6-1)          :p1c, after p1b2 p1b3, 10d
+  Questionnaire UI (W6-1)          :done, p1c, 2026-10-01, 1d
   Static quadrant (W6-2)           :p1d, after p1c, 5d
   Results + confidence (W6-3)      :p1e, after p1d, 6d
   SLICE SHIPS                      :milestone, m1, after p1e, 0d
@@ -707,6 +712,7 @@ Durations assume a solo builder. The v2 note "estimates for a small team" no lon
   - Options: (a) `POST /survey` (W7-1) converts the raw answer to $\mathbf{q}^*$ before validation, with no DDL change; (b) add a column for the raw answer in a new migration, which could be bundled with the missing `heel_fit` / `terrain` / `level` CHECKs.
   - W7-1's dependencies do not yet include W4'-2.
   - **Update 2026-09-25:** W7-1 shipped without this. Its request limited `POST /survey` to wrapping `build_survey_row()` / `insert_survey()` with no validation of its own, and option (a) would add a conversion step, plus `target_quadrant()`'s own checks, to the endpoint. The decision now gates **W6-1**, whose questionnaire must know whether to send a raw answer or `goal_x_target` / `goal_y_target`.
+  - **Update 2026-10-01:** W6-1 shipped **without a goal input**, so the decision does not block the questionnaire. When it is made, the form gains one field: option (a) sends a raw `goal`; option (b) does too, plus a migration. Until then, stored surveys carry discipline, terrain and level, from which `target_quadrant()` can derive $\mathbf{q}^*$ without the goal nudge.
 - **Learned ranking:** replace the weighted scorer once online feedback labels exist (§9.4).
 - **`trainer.py` distillation:** LLM → small classifier when volume/cost justify (W2-5).
 - **Catalog growth past 30:** triggers W5-2 (lifecycle) and raises the long-tail cold-start problem again.
@@ -723,6 +729,15 @@ Durations assume a solo builder. The v2 note "estimates for a small team" no lon
 ---
 
 ## 15. Changelog
+
+**v3.2, progress update (2026-10-01, W6-1)** — no plan or decision change.
+- Struck **W6-1** through: the questionnaire is done and reviewed, and was verified against the real API and Postgres.
+- A second review pass (React, WCAG 2.2 AA accessibility, security) found no critical issues. It produced:
+  - two HIGH accessibility fixes: plain-language size errors linked to their field, and announcements when a shoe is added or removed;
+  - a 415 for non-JSON submissions, closing a cross-site plain-text POST.
+  Pre-deployment security items are recorded in ARCHITECTURE §9.1, not built.
+- §2.0 row added. "Nearest unblocks" now names W6-2 and W3-1 as startable and W6-3 as still gated. §12 Gantt: W6-1 is `:done`. §13 records that the goal input was deferred, not decided.
+- Progress 8 → 9 of 37. No §2 decision was changed.
 
 **v3.2, progress update (2026-10-01)** — no plan or decision change.
 - Struck **W6-0** through: done and reviewed 2026-10-01. With W7-1 already done, both W6-1 prerequisites are met; the §13 $\mathbf{q}^*$ decision is what still gates it.
