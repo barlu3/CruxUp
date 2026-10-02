@@ -4,7 +4,9 @@ CruxUp is a climbing shoe recommender: a Python backend (FastAPI, Postgres) and
 a Next.js frontend. The plan of record is [`timeline.md`](timeline.md).
 
 Current state: **W0 foundations.** The schema, catalogue, prior model and corpus
-collector exist. The API and frontend are still stubs.
+collector exist. The API serves `POST /survey` and `GET /shoes` (§7). The
+frontend builds and has a test harness, but its survey and results pages are
+placeholders.
 
 ---
 
@@ -14,7 +16,7 @@ collector exist. The API and frontend are still stubs.
 |---|---|---|
 | Python | 3.10+ | Needs `X \| None` syntax and `datetime.fromisoformat` |
 | PostgreSQL | 14+ | 16 is what the migration is verified against |
-| Node | 18+ | Frontend only; not needed for backend work |
+| Node | 20.9+ | Frontend only; not needed for backend work. Next.js 16's minimum; CI uses 24 |
 
 ---
 
@@ -192,11 +194,47 @@ curl -s -H 'content-type: application/json' \
 ## 8. Frontend
 
 ```bash
-npm install
+npm ci             # installs exactly what package-lock.json records
 npm run dev        # http://localhost:3000
 ```
 
-Every page under `src/app/` is currently a stub. Frontend work is W6-1/2/3.
+Use `npm ci`, not `npm install`, unless you mean to change dependencies. The
+lockfile is committed, and `npm install` may rewrite it.
+
+Checks (the CI `frontend` job runs the same steps, in this order):
+
+```bash
+npm run lint       # ESLint; expect no errors and no warnings
+npm run typecheck  # tsc --noEmit
+npm test           # Vitest + React Testing Library: src/**/*.test.tsx
+npm run build      # production build; next build does not run ESLint
+npm run test:e2e   # Playwright: e2e/*.spec.ts, Chromium only
+```
+
+Before the first Playwright run, download its browser:
+
+```bash
+npx playwright install chromium
+```
+
+- Playwright starts its own server on **port 3100**, so it does not collide
+  with `npm run dev` on 3000. Locally that server is `next dev`; a server
+  already listening on 3100 is reused.
+- `CI=1 npm run test:e2e` serves the production build with `next start`
+  instead, as CI does. Run `npm run build` first.
+- `npm run test:watch` re-runs Vitest on save. `npm run test:coverage` writes a
+  V8 coverage report to `coverage/` (no thresholds yet).
+
+Only the home page has content so far. `/survey` and `/results` are
+placeholders (W6-1, W6-3).
+
+> **Running `next dev` from a coding agent** (Claude Code, Cursor and similar)
+> makes Next.js 16.3 write `AGENTS.md` and `CLAUDE.md` at the repository root,
+> or insert a rules block into an existing `CLAUDE.md`. This covers local
+> Playwright runs too, because they start `next dev`. Neither file belongs to
+> the repository. Delete them after the run. Under Claude Code,
+> `env -u AI_AGENT -u CLAUDECODE npm run test:e2e` stops them being written;
+> other agents set other variables.
 
 ---
 

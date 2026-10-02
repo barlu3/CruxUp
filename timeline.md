@@ -2,9 +2,9 @@
 
 **Version:** 3.2
 **Status:** Active. Supersedes v2.0 (2026-05-25).
-**Last updated:** 2026-09-25
+**Last updated:** 2026-10-01
 **Change basis:** v3.0 was the feasibility review of all 22 backlog tasks (§2.1). v3.1 adds D11 and D12, records what has actually been built (§2.0), and folds in two findings measured from the first live collection run — the mention-attribution problem (W1-3) and the $N_{\min}$ reachability problem (W2-3). **v3.2** closes a structural gap found while sequencing W6-1: the HTTP layer (**W7**) and the frontend build foundation (**W6-0**) were assumed by the scaffold but carried no task ID, so the plan showed W6-1 as startable when two prerequisites did not exist. See §15.
-**Progress:** 7 of 37 tasks complete (2 deferred). W1-0b is **not** complete: its collection path failed the YouTube terms review (§10.2). See §2.0.
+**Progress:** 8 of 37 tasks complete (2 deferred). W1-0b is **not** complete: its collection path failed the YouTube terms review (§10.2). See §2.0.
 
 ---
 
@@ -57,11 +57,11 @@ The original availability-based recommendation angle was **dropped**. The engine
 | **D10** | **Survey fit validation is a directional check (n≈8–12), not a statistical study.** | A real claim needs 30–50 participants and weeks of recruitment. Solo and pre-launch, that is not available. | W4'-3 rescoped. Real validation waits for §9.3 post-launch data — which is why the feedback columns land in W0-1a now. |
 | **D11** | **Reddit is not load-bearing. Apply for free non-commercial access now; build the corpus on YouTube and forums.** | Self-service app registration is closed — every OAuth client needs manual approval, reported at 2-4 weeks with a real chance of silent rejection. Cost turned out not to be the obstacle (metered access is about $3.60 at this volume); *access latency and uncertainty* are. | Resolves W0-0. Splits W1-0 into 0a (apply), 0b (YouTube/forums collector), 0c (Reddit adapter on approval). Forces a source-agnostic collector interface. See §10.0. **REOPENED 2026-09-16 — needs user sign-off.** The YouTube half of this decision failed the terms review (§10.2): the Developer Policies appear to prohibit the §7.4 design outright. The Reddit half stands. |
 
-### 2.0 Progress (audited 2026-09-14; refreshed 2026-09-23)
+### 2.0 Progress (audited 2026-09-14; refreshed 2026-10-01)
 
 Audited against files on disk and verified runs, not against memory.
 
-**Complete — 7 of 37 backlog tasks** (37 since v3.2 added W6-0, W7-1, W7-2):
+**Complete — 8 of 37 backlog tasks** (37 since v3.2 added W6-0, W7-1, W7-2):
 
 | Task | Evidence |
 |---|---|
@@ -72,6 +72,7 @@ Audited against files on disk and verified runs, not against memory.
 | W4'-1 survey capture (2026-09-17) | `survey/{schema,anchors,store}.py`. 146 tests; anchors resolve against the seeded catalog and reject unknown *and ambiguous* pairs; no DDL added. Reviewed 2026-09-20 (database / python / security). |
 | W4'-2 preferences → $\mathbf{q}^*$ (2026-09-23) | `survey/preferences.py`, a pure stdlib function. Every discipline lands in its §3 quadrant, and $\mathbf{q}^*$ stays inside $[-1,1]^2$ and off both axes for all 600 enum combinations (1334 tests). Reviewed (python). **Not yet wired into capture** — see §13. |
 | W7-1 API: `POST /survey` + `GET /shoes` (2026-09-25) | `main.py`, `api/deps.py`, `api/routes/{survey,shoes}.py`; 57 tests. `POST /survey` adds no validation of its own: its 422 list equals `build_survey_row()`'s, and a test pins that FastAPI validates nothing on the route. A valid submission returns only `survey_token`. `GET /shoes` returns `version`/`gender`, and every item round-trips to its own id. Reviewed (python, 2 rounds; security). **$\mathbf{q}^*$ still not wired** — see §13. |
+| W6-0 frontend foundation (2026-10-01) | `layout.tsx`, `page.tsx`, a committed `package-lock.json`, Vitest + React Testing Library, Playwright, and a CI `frontend` job. `npm run build` prerenders all four routes; 2 Vitest and 2 Playwright tests pass, the latter against both `next dev` and the production build; lint and type-check are clean. `next` was raised 16.2.4 → 16.3.8 to clear critical advisories (`npm audit`: 0). Reviewed (typescript). |
 
 **Built but not on the backlog** — support the above, worth naming so they are not re-scoped later:
 `validate.py` (catalogue invariants + the `--require-msrp` budget-gate guard), `config.py` (`.env` loading), `SETUP.md` (local setup, verified end to end), 54 tests.
@@ -82,9 +83,9 @@ Audited against files on disk and verified runs, not against memory.
 1. **W1-3 needs redesigning.** Only 18% of collected comments name a shoe; 44% say "these/them/it". Alias matching would capture under a fifth of the corpus. Attribute by video subject first.
 2. **$N_{\min}=25$ may be unreachable.** 0/30 shoes clear it at 379 documents; top 5 hold 64% of mentions. The power law is steeper than §4 assumed. Query generation is currently anchor-biased, which partly explains it — per-shoe queries are the first fix.
 
-**Not started:** everything else. The thin slice (D7) now has its data layer, survey capture, the $\mathbf{q}^*$ target function and an HTTP surface for capture and the catalog, but no scorer and no UI. `api/routes/recommend.py`, `recommend/`, `nlp/`, `eval/` and all of `src/app/` are still stubs.
+**Not started:** everything else. The thin slice (D7) now has its data layer, survey capture, the $\mathbf{q}^*$ target function, an HTTP surface for capture and the catalog, and a frontend that builds and has a test harness, but no scorer and no product UI: the survey and results pages are placeholders. `api/routes/recommend.py`, `recommend/`, `nlp/` and `eval/` are still stubs.
 
-**Nearest unblocks (refreshed 2026-09-25):** the critical path to a shippable slice runs **W6-0 → W6-1**, now that W7-1 is done (2026-09-25). W7-1 shipped without deciding how the raw comfort-vs-performance answer reaches `target_quadrant()` (§13). That decision now gates W6-1's questionnaire, which has to know what to send. W1-0a remains one hour of paperwork gating a 2–4 week queue. W5-1c/W5-1d are mechanical and gate the §7.6 budget gate.
+**Nearest unblocks (refreshed 2026-10-01):** both prerequisites of **W6-1** are done, W7-1 (2026-09-25) and W6-0 (2026-10-01), so W6-1 is the head of the critical path to a shippable slice. W7-1 shipped without deciding how the raw comfort-vs-performance answer reaches `target_quadrant()` (§13). That decision now gates W6-1's questionnaire, which has to know what to send. W1-0a remains one hour of paperwork gating a 2–4 week queue. W5-1c/W5-1d are mechanical and gate the §7.6 budget gate.
 
 ### 2.1 Review disposition (2026-09-07)
 
@@ -618,7 +619,7 @@ The collector must therefore be written source-agnostic from the first commit �
 ### W6 — Frontend (moved earlier)
 | ID | Task | Deps | Effort | Notes |
 |---|---|---|---|---|
-| W6-0 | Frontend foundation: install deps, root layout, test harness | — | 2d | **Added v3.2.** `node_modules` and a lockfile do not exist; `layout.tsx` and `page.tsx` are empty, so App Router cannot build. No test runner is declared, which leaves `tdd-guide` and `e2e-runner` (§9 chain for W6) nothing to run. Adds Vitest + React Testing Library and Playwright. |
+| ~~W6-0~~ | ~~Frontend foundation: install deps, root layout, test harness~~ | — | 2d | **DONE 2026-10-01, reviewed (typescript).** Root layout and home page; npm lockfile committed; Vitest + React Testing Library (`src/**/*.test.tsx`) and Playwright (`e2e/`, Chromium, port 3100); CI `frontend` job. `next` pinned at 16.3.8 — the scaffolded 16.2.4 carried critical advisories. W6-1 inherits both test layers. |
 | W6-1 | Questionnaire UI | W4'-2, **W7-1**, **W6-0** | 1–2w | **In the thin slice.** Anchor picker needs catalog autocomplete, not free text — so it depends on `GET /shoes` (W7-1), which must expose `version`/`gender` or the UI recreates the ambiguity W4'-1 rejects server-side. |
 | W6-2 | Interactive quadrant | W5-1a | 1w static + 1w interactive | **Moved from second-to-last into the thin slice.** Hand-placed shoes test the product hypothesis with no corpus. |
 | W6-3 | Results + confidence display | W6-2, W3-1 | 1w | Low-confidence results visibly distinct; gated-out shoes never shown. |
@@ -653,8 +654,8 @@ gantt
   Preferences to q* (W4'-2)        :done, p1a, after p1a0, 3d
   Spreadsheet scoring (W3-1)       :p1b, after p1a, 4d
   API survey + shoes (W7-1)        :done, p1b2, after p1b, 4d
-  Frontend foundation (W6-0)       :p1b3, after p1b2, 2d
-  Questionnaire UI (W6-1)          :p1c, after p1b3, 10d
+  Frontend foundation (W6-0)       :done, p1b3, 2026-10-01, 1d
+  Questionnaire UI (W6-1)          :p1c, after p1b2 p1b3, 10d
   Static quadrant (W6-2)           :p1d, after p1c, 5d
   Results + confidence (W6-3)      :p1e, after p1d, 6d
   SLICE SHIPS                      :milestone, m1, after p1e, 0d
@@ -722,6 +723,12 @@ Durations assume a solo builder. The v2 note "estimates for a small team" no lon
 ---
 
 ## 15. Changelog
+
+**v3.2, progress update (2026-10-01)** — no plan or decision change.
+- Struck **W6-0** through: done and reviewed 2026-10-01. With W7-1 already done, both W6-1 prerequisites are met; the §13 $\mathbf{q}^*$ decision is what still gates it.
+- `next` raised 16.2.4 → 16.3.8 (and `eslint-config-next` to match): the scaffolded version fell inside the range of critical advisories. This is a dependency fix, not a §2 decision.
+- §12 Gantt: W6-0 marked `:done`; W6-1 now waits on W7-1 **and** W6-0 explicitly, matching §11 and the §6 graph.
+- Progress 7 → 8 of 37. No §2 decision was changed.
 
 **v3.2, progress update (2026-09-25)** — no plan or decision change.
 - Struck **W7-1** through: `POST /survey` and `GET /shoes` done and reviewed 2026-09-25, 57 tests (1,610 in the suite). The critical path is now W6-0 → W6-1.

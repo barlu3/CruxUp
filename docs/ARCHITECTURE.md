@@ -2,7 +2,7 @@
 
 A reference for the structure, data model and design of the CruxUp climbing shoe recommender. It describes the software **as implemented** and marks where the planned design has not been built yet.
 
-- **Last verified against the codebase:** 2026-09-25
+- **Last verified against the codebase:** 2026-10-01
 - **Plan, tasks and decisions of record:** [`timeline.md`](../timeline.md). Decision IDs (D1–D12) and task IDs (W0-1a, …) below refer to it.
 - **Local setup:** [`SETUP.md`](../SETUP.md)
 - **Verification:** the commands at the foot of this document re-check the claims that can be checked mechanically.
@@ -21,8 +21,8 @@ A reference for the structure, data model and design of the CruxUp climbing shoe
   - Q1 performance+stiff · Q2 comfort+stiff · Q3 comfort+soft · Q4 performance+soft
 - **Placement provenance.** A shoe's position has one of three sources, ranked by confidence: **corpus** (aggregated community discussion) > **hand** (human judgement) > **spec** (derived from manufacturer specifications). The source is stored with every placement.
 - **Build state:**
-  - **Implemented:** the product database schema, the shoe catalogue and its validator, a spec-to-placement model, the catalogue loader, environment configuration, a source-agnostic corpus collector, survey capture (§4.7), preference→target (`q*`) derivation (§4.8), and an HTTP API with `POST /survey` and `GET /shoes` (§4.9).
-  - **Not implemented:** `POST /recommend`, the recommendation scorer, NLP extraction and aggregation, evaluation, and the entire web frontend. These exist as documented stubs (§7). Survey capture is reachable over HTTP (§4.9), but the pure `q*` function (§4.8) is still not called by it.
+  - **Implemented:** the product database schema, the shoe catalogue and its validator, a spec-to-placement model, the catalogue loader, environment configuration, a source-agnostic corpus collector, survey capture (§4.7), preference→target (`q*`) derivation (§4.8), an HTTP API with `POST /survey` and `GET /shoes` (§4.9), and the frontend shell with its component and end-to-end test harness (§4.10).
+  - **Not implemented:** `POST /recommend`, the recommendation scorer, NLP extraction and aggregation, evaluation, and every frontend page except the home page. These exist as documented stubs (§7). Survey capture is reachable over HTTP (§4.9), but the pure `q*` function (§4.8) is still not called by it, and no frontend route handler calls the API yet.
 - **Current binding constraint:** **no corpus source is cleared.** YouTube collection failed a terms review, Reddit access is pending, and forum terms are unreviewed (`timeline.md` §10.2; D11 reopened). The planned first release (D7) is designed to work **without** a corpus, on hand- and spec-derived placements.
 
 ---
@@ -98,8 +98,10 @@ flowchart LR
   SCORE[recommend/<br/>fit · style · score · confidence]:::planned
   NLP[nlp/<br/>extract · aggregate]:::planned
   EVAL[eval/<br/>gearlab_map · metrics · calibrate]:::planned
-  WEB[Next.js app<br/>survey · results]:::planned
+  SHELL[Next.js shell<br/>layout · home page]
+  WEB[Next.js pages<br/>survey · results]:::planned
 
+  SHELL -. links to .-> WEB
   WEB -.->|via route handler| RSURV
   WEB -.->|via route handler| RSHOE
   WEB -.-> RREC -.-> SCORE -.-> SHOE
@@ -136,7 +138,12 @@ flowchart LR
 | `backend/app/eval/` | Calibration and metrics | Stub |
 | `backend/tests/` | Tests: 5 implemented files, 3 stubs | Partial |
 | `backend/data/` | Local data: `gearlab/` placeholder; landing store (gitignored) | Runtime |
-| `src/app/` | Next.js App Router frontend: `page.tsx`, `layout.tsx`, `survey/`, `results/`, `lib/api.ts`, `lib/types.ts` | Stub |
+| `src/app/layout.tsx`, `src/app/page.tsx`, `src/app/globals.css` | Next.js App Router root layout, home page, global stylesheet | Implemented (§4.10) |
+| `src/app/survey/`, `src/app/results/`, `src/app/lib/` | Questionnaire and results pages, API client, shared types | Stub |
+| `src/app/page.test.tsx`, `e2e/` | Component test (Vitest) and end-to-end specs (Playwright) | Implemented (§4.10, §11) |
+| `package.json`, `package-lock.json` | npm manifest, scripts and committed lockfile | Implemented (§10.2) |
+| `vitest.config.mts`, `vitest.setup.ts`, `playwright.config.ts` | Test-runner configuration | Implemented (§4.10) |
+| `.github/workflows/ci.yml` | Continuous integration: two backend jobs and one frontend job | Implemented (§11) |
 | `scaffold.sh` | Non-destructive generator for the stub tree (54 `stub` entries; writes only files that do not exist) | Tooling |
 | `backend/scraping/`, `backend/NLP/` | Empty files from an earlier layout | Dead code (§12) |
 | `timeline.md`, `SETUP.md` | Plan of record; local setup | Docs |
@@ -499,6 +506,52 @@ has two endpoints; `POST /recommend` belongs to W7-2 and is not routed.
 - **Not yet wired:** `preferences.target_quadrant()`. `POST /survey` stores
   `goal_x_target` / `goal_y_target` as submitted (§12).
 
+### 4.10 Frontend shell and test harness — `src/app/`, repository root
+
+The minimum the Next.js App Router needs in order to build, plus the two test layers that later frontend work builds on (W6-0). It contains no product feature yet: the survey and results pages are placeholders (§7).
+
+#### Structure
+| File | Role |
+|---|---|
+| `src/app/layout.tsx` | Root layout, a server component. Renders `<html lang="en">` and `<body>`, imports `globals.css`, and exports `metadata` (title `CruxUp` and a one-line description). |
+| `src/app/page.tsx` | Home page, a server component: an `<h1>`, one sentence describing the product, and a `next/link` to `/survey`. |
+| `src/app/globals.css` | `@import "tailwindcss";` only. No design tokens yet. |
+| `src/app/survey/page.tsx`, `src/app/results/page.tsx` | Placeholder pages that render `null` (W6-1, W6-3). |
+| `src/app/lib/api.ts`, `src/app/lib/types.ts` | Empty modules (`export {}`) reserved for the API client and the shared types. |
+| `vitest.config.mts`, `vitest.setup.ts` | Component-test configuration and per-test setup. |
+| `playwright.config.ts`, `e2e/` | End-to-end configuration and specs. |
+
+#### Build output
+- `next build` prerenders `/`, `/_not-found`, `/survey` and `/results` as static content.
+- No route handler, client component, middleware or server action exists yet. The data path in §8 (browser → route handler → FastAPI) is not yet built on the frontend side.
+- **No web fonts are loaded.** `next/font/google` would download fonts during `next build`, which would make the build depend on network access.
+- **Module alias:** `@/*` resolves to `src/*`, in both `tsconfig.json` and Vitest (`resolve.tsconfigPaths`). Nothing imports through it yet.
+
+#### Test layers
+| Layer | Tool | Location | Runs against | Covers |
+|---|---|---|---|---|
+| Component | Vitest 4 + React Testing Library | `src/**/*.test.{ts,tsx}` | jsdom | One component's rendered, accessible structure. Synchronous server components render directly. |
+| End-to-end | Playwright, Chromium only | `e2e/*.spec.ts` | A real Next.js server on port 3100 | Routing and navigation across pages, and HTTP status. |
+
+- **Vitest:**
+  - `vitest.setup.ts` registers the `@testing-library/jest-dom` matchers and unmounts after every test.
+  - Test APIs are imported explicitly rather than injected as globals.
+  - Vitest includes only `src/`, and Playwright reads only `e2e/`, so neither runner picks up the other's files.
+- **Async server components** cannot be rendered by React Testing Library. They belong to the Playwright layer.
+- **Playwright server:**
+  - Locally it starts `next dev`, and an already-running server on port 3100 is reused.
+  - When `CI` is set, it starts `next start` against the build made by the preceding CI step, so CI exercises production output.
+  - Retries (2) and `forbidOnly` apply in CI only.
+  - Port 3100 avoids colliding with a development server on the default 3000.
+
+#### Toolchain
+- **Package manager:** npm, with a committed `package-lock.json` (lockfile v3). `npm ci` reproduces the install.
+- **Pinning:** `next` and `eslint-config-next` are pinned exactly, at the same version. `engines.node` is `>=20.9.0`, the Next.js 16 minimum.
+- **Lint:** ESLint 9 flat config, using `eslint-config-next` `core-web-vitals` + `typescript`. It ignores `.venv/`, coverage and Playwright output.
+  - Next.js 16's `next build` does not run ESLint, so lint is a separate CI step.
+- **Type-check:** `tsc --noEmit` (`npm run typecheck`). `next build` also type-checks every file that `tsconfig.json` includes, test files and configs among them.
+  - `tsconfig.json` excludes `.venv` and `backend` so the type-checker never walks the Python trees.
+
 ---
 
 ## 5. Data model (PostgreSQL)
@@ -686,7 +739,8 @@ Each stub holds a one-line docstring naming its intended responsibility and task
 | `scraping/rate_limiter.py` | Shared token bucket + backoff | Per-source quota is handled by `QuotaLedger`; a shared limiter and backoff remain planned (W0-3) |
 | `scraping/compile.py` | Ingest → normalise → snapshot | Planned (W1-full) |
 | `scraping/mentions.py` | Mention detection "via shoe_alias / NER" | **Redesign required:** most comments do not name a shoe, so attribution must come mainly from the video or thread subject, with aliases secondary (W1-3) |
-| `src/app/**` | Survey, results, API client, shared types | Frontend not started |
+| `src/app/survey/page.tsx`, `results/page.tsx` | Questionnaire UI; ranked results with confidence | Placeholders that render `null` and build as static routes. Owned by **W6-1** and **W6-3**. The shell around them is implemented (§4.10) |
+| `src/app/lib/api.ts`, `types.ts` | Backend API client; shared types mirroring backend models | Empty modules. Under the §8 data path the client calls the app's own route handlers, never FastAPI directly (W6-1) |
 
 ---
 
@@ -727,7 +781,8 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   the survey is anonymous by design. The Next.js route handler (W6-1) is the
   only intended client. It must forward only `/survey` and `/shoes`, and cap
   request size (§12).
-- **Git hygiene:** `.gitignore` covers `.env`, `.env*.local`, `backend/data/*.sqlite3` (collected third-party content) and `.pytest_cache`.
+- **Git hygiene:** `.gitignore` covers `.env`, `.env*.local`, `backend/data/*.sqlite3` (collected third-party content), `.pytest_cache`, `node_modules`, `.next` and Playwright output (`test-results/`, `playwright-report/`, `blob-report/`). `package-lock.json` is committed.
+- **Dependency audit:** `npm audit` reports no known vulnerabilities at the pinned versions (§10.2).
 
 ### 9.2 External constraints
 - **YouTube Data API:** separate daily quota buckets (§4.6). The Developer Policies limit stored data to 30 days and prohibit aggregating data or deriving new metrics from it, so YouTube collection is **not cleared** for the planned aggregation (`timeline.md` §10.2).
@@ -772,15 +827,35 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - Beyond these, implemented code uses only the standard library, including `argparse`, `dataclasses`, `datetime`, `enum`, `hashlib`, `hmac`, `json`, `logging`, `pathlib`, `sqlite3`, `urllib` and `zoneinfo`.
 - `pglast` is an optional development tool for checking DDL without a server, not a runtime dependency.
 
-### 10.2 Frontend (`package.json`)
-- **Runtime:** `next` 16.2.4, `react` 19.2.4, `react-dom` 19.2.4.
-- **Development:** TypeScript 5, Tailwind CSS 4 (via `@tailwindcss/postcss`), ESLint 9 with `eslint-config-next`.
+### 10.2 Frontend (`package.json`, locked by `package-lock.json`)
+| Package | Locked version | Purpose |
+|---|---|---|
+| `next` | 16.3.8 (exact pin) | App Router framework |
+| `react`, `react-dom` | 19.2.4 (exact pin) | UI runtime |
+| `typescript` | 5.9.3 | Type-checking |
+| `tailwindcss`, `@tailwindcss/postcss` | 4.3.3 | Styling, via PostCSS |
+| `eslint`, `eslint-config-next` | 9.39.5, 16.3.8 (exact pin) | Lint |
+| `vitest`, `@vitest/coverage-v8` | 4.1.11 | Component-test runner; V8 coverage (`npm run test:coverage`, no thresholds yet) |
+| `@vitejs/plugin-react` | 6.1.1 | JSX transform for Vitest |
+| `jsdom` | 30.1.1 | DOM environment for component tests |
+| `@testing-library/react`, `@testing-library/dom`, `@testing-library/jest-dom` | 16.3.3, 10.4.2, 7.0.1 | Component queries and DOM matchers |
+| `@playwright/test` | 1.63.0 | End-to-end runner (Chromium) |
+| `@types/node`, `@types/react`, `@types/react-dom` | 20.19.43, 19.3.0, 19.3.0 | Type definitions |
+
+- `next` 16.2.4, the version first scaffolded, falls inside the affected range of published advisories (≤16.3.5), including remote code execution in the Image Optimization API and middleware bypasses. 16.3.8 is outside that range and was the latest release when pinned.
+- Vitest is held at 4.x because Vitest 5 requires `@types/node` 22 or later, while the type definitions track the `engines` floor (Node 20).
+- Everything listed except `next`, `react` and `react-dom` is a development dependency.
 
 ---
 
 ## 11. Testing architecture
 
-- **Runner:** `pytest`, run from the repository root: `python3 -m pytest backend/tests/ -q`.
+- **Runners:** `pytest` for the backend, run from the repository root: `python3 -m pytest backend/tests/ -q`. Vitest and Playwright for the frontend (§4.10): `npm test` and `npm run test:e2e`.
+- **Frontend tests:**
+  - **`src/app/page.test.tsx`** — 2 Vitest tests. The home page renders a level-1 heading `CruxUp` and a link whose `href` is `/survey`. Both use role-based queries.
+  - **`e2e/home.spec.ts`** — 2 Playwright tests:
+    - the home page has the title `CruxUp`, and its link navigates to `/survey`;
+    - `GET /survey` returns 200. The URL assertion alone would also pass on a 404, which keeps the same URL; with the survey page removed this test fails and the first still passes.
 - **Isolation:** no network and no database. External APIs are replaced by an injected transport; SQLite state uses temporary paths; tests that check availability explicitly remove environment credentials; an autouse fixture supplies a synthetic author key.
 - **`backend/tests/test_collector.py`** — 25 tests:
   - privacy: display names never stored; hashes keyed; key read at hash time; weak and compromised keys rejected
@@ -859,10 +934,11 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - **Continuous integration** (`.github/workflows/ci.yml`, GitHub Actions; runs on pushes to `main`, on pull requests, and manually):
   - `unit` — Python 3.10 and 3.12, no database. Validates the catalogue, then runs the suite with an unreachable `DATABASE_URL`, proving the DB-backed tests skip rather than fail.
   - `integration` — a PostgreSQL 16 service container. Applies `0001_init.sql`, reverses it and checks zero tables remain, re-applies it, seeds the catalogue, runs the full suite, and **fails if any test skipped**, since a skip with a database present means the setup broke. It then checks `user_survey` is empty.
-  - There is no frontend job yet: the app cannot build (§12). There is no deploy stage, because there is no hosting target.
+  - `frontend` — Node 24. Runs `npm ci`, lint, type-check, Vitest, `next build`, then installs Chromium and runs Playwright against the production build. The Playwright HTML report is uploaded as an artifact when the job fails.
+  - There is no deploy stage, because there is no hosting target.
   - The migration apply/reverse check is automated here; `SETUP.md` §3 remains the manual procedure for a local database.
 - **Stub test files:** `test_fit.py`, `test_aggregate.py`, `test_calibration.py`.
-- **Total:** 1,610 tests with a database reachable; 1,596 passed and 14 skipped without one. The same counts hold on Python 3.9 (FastAPI 0.128, Starlette 0.49) and 3.14 (FastAPI 0.141, Starlette 1.7).
+- **Total:** backend 1,610 tests with a database reachable, and 1,596 passed plus 14 skipped without one. The same counts hold on Python 3.9 (FastAPI 0.128, Starlette 0.49) and 3.14 (FastAPI 0.141, Starlette 1.7). Frontend: 2 Vitest tests and 2 Playwright tests.
 
 ---
 
@@ -926,7 +1002,9 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - **Legacy dead code:** `backend/scraping/` (`compile.py`, `sources.py`, `NLP_training_data.txt`) and `backend/NLP/` (`processing/NLP.py`, `training/trainer.py`) are empty files from an earlier layout, duplicated by `backend/app/`.
 - **Module split mismatch:** collection sources live in `collector.py`, but stub modules for a per-source split remain under `backend/app/scraping/`.
 - **Migration edited in place:** `0001_init.sql` was changed after first use to add `prior_source`. That is acceptable before any deployment; later changes should be additive migrations.
-- **The frontend cannot build.** `src/app/layout.tsx` and `src/app/page.tsx` are empty files, and the App Router requires a root layout that renders `<html>`/`<body>`. There is also no installed dependency tree (no `node_modules`, no lockfile) and no test runner declared in `package.json`, so no frontend test or end-to-end tooling can run. Tracked as **W6-0**.
+- **The frontend has no product pages.** The shell builds and is tested (§4.10), but `/survey` and `/results` render nothing, and `lib/api.ts` and `lib/types.ts` are empty. There are no route handlers, so the §8 data path does not exist on the frontend side yet. Tracked as **W6-1** and **W6-3**.
+- **End-to-end tests use different servers locally and in CI.** Local runs use `next dev` and CI uses `next start`, so behaviour that differs between development and production builds (for example prefetching, or dev-only warnings) can pass in one and fail in the other. CI is the authoritative run. To reproduce it locally, run `npm run build` and then `CI=1 npm run test:e2e`.
+- **A coding-agent environment makes `next dev` write files.** When Next.js 16.3 detects that it is running inside a coding agent (through environment variables such as `AI_AGENT` or `CLAUDECODE`), `next dev` creates `AGENTS.md` and `CLAUDE.md` at the repository root. If a `CLAUDE.md` already exists, it inserts its own rules block into it. Neither file is part of the repository, and `next start` and `next build` do not do this.
 - **Documentation stubs:** `docs/eval-methodology.md` and `docs/lexicon-guide.md` are placeholders, and `README.md` is a single line.
 - **No corpus source is cleared** (§9.2), so the NLP half of the architecture has no permitted input today.
 
@@ -953,4 +1031,12 @@ python3 backend/app/catalog/priors.py --refit | head -2          # LOOCV  MAE x 
 psql -d <db> -f backend/app/db/migrations/0001_init.sql          # applies clean on an empty database
 psql -d <db> -f backend/app/db/migrations/0001_init_down.sql     # reverses to zero tables
 CRUXUP_AUTHOR_SALT= python3 backend/app/scraping/collector.py; echo $?   # 2 — refuses to start
+npm ci                                                           # installs exactly what package-lock.json records
+npm run lint                                                     # no errors, no warnings
+npm run typecheck                                                # clean
+npm test                                                         # 2 passed (src/app/page.test.tsx)
+npm run build                                                    # prerenders /, /_not-found, /results, /survey as static
+npm run test:e2e                                                 # 2 passed (local, next dev)
+CI=1 npm run test:e2e                                            # 2 passed (production build, next start) — run after npm run build
+npm audit                                                        # found 0 vulnerabilities
 ```
