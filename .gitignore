@@ -1,17 +1,5 @@
-# dependencies
-/node_modules
-/.pnp
-.pnp.js
-
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
-
-# production
-/build
+# Frontend dependencies, build output and test artifacts are ignored by
+# frontend/.gitignore.
 
 # misc
 .DS_Store
@@ -25,13 +13,6 @@ yarn-error.log*
 # local env files
 .env*.local
 
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
 .env
 
 
@@ -39,7 +20,6 @@ next-env.d.ts
 .pytest_cache
 __pycache__
 public/renders
-package-lock.json
 credentials.json
 quickstart.py
 token.json

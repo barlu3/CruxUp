@@ -218,23 +218,23 @@ keep backend/data/gearlab
 keep backend/data/snapshots
 keep backend/data/cache
 
-echo "== frontend subdirs (Next.js at root) =="
-stub src/app/survey/page.tsx <<'TSX'
+echo "== frontend subdirs (Next.js app in frontend/) =="
+stub frontend/src/app/survey/page.tsx <<'TSX'
 export default function SurveyPage() {
   return null; // [W6-1] questionnaire UI
 }
 TSX
-stub src/app/results/page.tsx <<'TSX'
+stub frontend/src/app/results/page.tsx <<'TSX'
 export default function ResultsPage() {
   return null; // [W6-3] ranked results + confidence
 }
 TSX
-keep src/app/components
-stub src/app/lib/types.ts <<'TS'
+keep frontend/src/app/components
+stub frontend/src/app/lib/types.ts <<'TS'
 // Shared types mirroring backend models. [W6]
 export {};
 TS
-stub src/app/lib/api.ts <<'TS'
+stub frontend/src/app/lib/api.ts <<'TS'
 // Backend API client. [W6]
 export {};
 TS

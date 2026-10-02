@@ -1,6 +1,6 @@
-# CI for the CruxUp backend.
+# CI for CruxUp (backend and frontend).
 #
-# Two jobs, because the suite runs in two modes on purpose:
+# Two backend jobs, because the suite runs in two modes on purpose:
 #   * unit        -- no database. Proves the default suite stays hermetic: the
 #                    DB-backed tests must SKIP cleanly, never fail, when no
 #                    database is reachable.
@@ -9,9 +9,10 @@
 #                    whole suite and FAILS if any test skipped -- a skip here
 #                    means the database setup broke, not that it is optional.
 #
-# No frontend job yet: src/app/layout.tsx and page.tsx are empty and there is
-# no lockfile, so the app cannot build. Adding that job is part of W6-0
-# (timeline.md section 11). No deploy stage: there is no hosting target.
+# Plus a frontend job (lint, typecheck, Vitest, production build, Playwright
+# against that build), added in W6-0. It runs inside frontend/, where the
+# Next.js app and its lockfile live. No deploy stage: there is no hosting
+# target.
 
 name: CI
 
@@ -119,3 +120,33 @@ jobs:
         run: |
           rows=$(psql "$DATABASE_URL" -tAc "select count(*) from user_survey")
           test "$rows" -eq 0 || { echo "::error::$rows user_survey rows left behind"; exit 1; }
+
+  frontend:
+    name: Frontend (lint, typecheck, Vitest, build, Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      # CI=true (set by GitHub) makes Playwright serve the build via `next start`.
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          # `uses:` steps ignore defaults.run, so this path is from the repo root.
+          path: frontend/playwright-report/
+          retention-days: 7
