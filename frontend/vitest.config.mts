@@ -13,6 +13,15 @@ export default defineConfig({
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],
       exclude: ["src/**/*.test.{ts,tsx}"],
+      // Logic directories only; pages and layout are covered by Playwright.
+      thresholds: {
+        "src/app/{api,components,lib}/**": {
+          lines: 80,
+          statements: 80,
+          functions: 80,
+          branches: 75,
+        },
+      },
     },
   },
 });
