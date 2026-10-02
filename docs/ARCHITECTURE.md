@@ -817,11 +817,11 @@ Each stub holds a one-line docstring naming its intended responsibility and task
 
 | Stub | Docstring intent | Current design (overrides the docstring) |
 |---|---|---|
-| `api/routes/recommend.py` | `POST /recommend` → ranked results + confidence | Owned by **W7-2**, after the scorer exists (W3-3). Not routed by `main.py` |
+| `api/routes/recommend.py` | `POST /recommend` → ranked results + confidence | Owned by **W7-2**, which moves into the thin slice (`timeline.md` v3.3): a thin wrapper over the v0 scorer. It takes `{"survey_token"}` in the body and returns `outcome` `ranked` or `no_style_target`. Not yet routed by `main.py`. The results page will reach it through a third route handler, `/api/recommend`, which reads the token from an HttpOnly cookie (W6-3) |
 | `db/client.py` | Supabase/Postgres client | Implemented code uses `psycopg` directly against `DATABASE_URL`, which keeps the database portable |
 | `db/models.py` | Typed models mirroring migrations; cites "PROJECT_PLAN §8" | That file does not exist; the schema of record is `timeline.md` §8 and `0001_init.sql` |
 | `recommend/fit.py`, `style.py`, `confidence.py` | §7.2, §7.3, §7.7 | Confidence must reflect `prior_source` |
-| `recommend/score.py` | "gated by size & price" | The size gate is `size_exists` only (D9); weights are set by judgement, not tuned (§7.6) |
+| `recommend/score.py` | "gated by size & price" | The size gate is `size_exists` only (D9); weights are set by judgement, not tuned (§7.6). **Planned v0 (W3-1a, `timeline.md` v3.3):**<br>• pure `style.py` and `score.py`, a hash-pinned `config.py`, and one database-facing `service.py`;<br>• ranks by style match only. Fit, budget and confidence are NULL ("not assessed"), because the catalogue has no prices, no size map and no width/volume/heel data;<br>• shoes the user named as fitting badly sort last with a label;<br>• results are written once and `scorer_version` is always set explicitly. |
 | `catalog/sizing.py` | "Hard gate in scoring" | **Superseded by D9** — a downsizing mismatch is a warning; only `size_exists` excludes |
 | `eval/gearlab_map.py` | "Tune weights to confirmed placements" | **Superseded by D8** — weights are frozen before measurement; evaluation uses LOOCV |
 | `eval/metrics.py`, `calibrate.py` | MAE, confusion matrix, calibration | Calibration must beat the `priors.py` baseline to justify the pipeline |
@@ -850,6 +850,8 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - **Source-agnostic collection** (D11). No single data source is load-bearing; sources are pluggable adapters that may be unavailable.
 - **Non-commercial and advertising-free** (D11). The product carries no advertising. Using free API tiers under non-commercial terms constrains future monetisation for as long as that data is in use.
 - **Privacy by construction** (D4). No images, no biometrics, no personal identifiers; author identity exists only as a keyed pseudonym.
+- **`q*` has a single author** (decided 2026-10-02, `timeline.md` v3.3). The survey layer computes the user's target when a survey is saved and stores it with the raw answers and a mapping version. Clients cannot supply it, and the scorer only reads it. One author means a survey's target never shifts silently when the mapping constants change, and a stored target can always be audited against its inputs. *(Planned: W4'-4a and W4'-4b.)*
+- **The first results are a style match** (decided 2026-10-02). The v0 scorer ranks by quadrant proximity only, and labels fit and budget as not assessed rather than inventing them. Results are written once, so later feedback (§9.4) stays tied to what each user actually saw. *(Planned: W3-1a, W7-2, W6-3.)*
 - **The browser never reaches the service layer directly** (decided 2026-09-21, `timeline.md` §6). The data path is browser → Next.js route handler → FastAPI on localhost → PostgreSQL. Both ends are implemented: FastAPI without CORS middleware (§4.9), and two Next.js route handlers that relay server-side (§4.11). The frontend talks only to its own origin, so there is no CORS surface and the backend is not addressable from the client. The alternative — querying PostgreSQL from TypeScript — was rejected because it would duplicate the anchor resolution, allow-lists and domain guards that already exist and are tested in Python, leaving two validators to keep in step.
 
 ---
@@ -1127,12 +1129,18 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
     target therefore cannot be recomputed exactly if the mapping constants
     change later.
 
-  `POST /survey` (W7-1) now exists but was delivered without this wiring,
-  because the choice between converting `goal` in the endpoint and adding a
-  column is still open (`timeline.md` §13). For the same reason, the
-  questionnaire (§4.11) does not ask for the goal. The discipline, terrain
-  and level it does collect are enough for `target_quadrant()`, whose `goal`
-  argument is optional.
+  `POST /survey` (W7-1) was delivered without this wiring, and the
+  questionnaire (§4.11) does not ask for the goal. **The design is now decided
+  (`timeline.md` v3.3, §13) but not built:**
+  - `q*` gets a single author: the survey layer computes it at capture (W4'-4a).
+  - Clients may no longer send `goal_x_target` / `goal_y_target`.
+  - Migration `0002_survey_target` (W4'-4b) adds the raw `goal`, a mapping
+    version, and CHECK constraints that also cover `heel_fit`, `terrain` and
+    `level`.
+  - The scorer will read the stored `q*` and never derive it.
+  - Until W4'-4a lands, every stored survey has a NULL `q*`.
+  - Today a client can still store a `q*` that contradicts its own
+    discipline: `test_api.py` stores a trad survey (Q2) with a Q3 target.
 - **Two quadrant classifiers.** `catalog/priors.quadrant()` and
   `survey/preferences.quadrant_of()` both label points on the same plane. They
   differ on axis points: the first returns `ON-AXIS`, the second raises. They
