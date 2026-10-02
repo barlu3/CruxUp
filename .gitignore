@@ -39,7 +39,6 @@ next-env.d.ts
 .pytest_cache
 __pycache__
 public/renders
-package-lock.json
 credentials.json
 quickstart.py
 token.json
@@ -66,3 +65,9 @@ backend/data/cache/*
 # timeline.md section 10 warns against. Regenerate with collector.py.
 backend/data/*.sqlite3
 backend/data/*.sqlite3-journal
+
+# playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
