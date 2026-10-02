@@ -193,7 +193,11 @@ curl -s -H 'content-type: application/json' \
 
 ## 8. Frontend
 
+The Next.js app is a self-contained npm project in `frontend/`. Run every
+command in this section from there.
+
 ```bash
+cd frontend
 npm ci             # installs exactly what package-lock.json records
 npm run dev        # http://localhost:3000
 ```
@@ -229,8 +233,8 @@ Only the home page has content so far. `/survey` and `/results` are
 placeholders (W6-1, W6-3).
 
 > **Running `next dev` from a coding agent** (Claude Code, Cursor and similar)
-> makes Next.js 16.3 write `AGENTS.md` and `CLAUDE.md` at the repository root,
-> or insert a rules block into an existing `CLAUDE.md`. This covers local
+> makes Next.js 16.3 write `AGENTS.md` and `CLAUDE.md` into `frontend/`, or
+> insert a rules block into an existing `frontend/CLAUDE.md`. This covers local
 > Playwright runs too, because they start `next dev`. Neither file belongs to
 > the repository. Delete them after the run. Under Claude Code,
 > `env -u AI_AGENT -u CLAUDECODE npm run test:e2e` stops them being written;

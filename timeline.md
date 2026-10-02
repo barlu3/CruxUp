@@ -619,7 +619,7 @@ The collector must therefore be written source-agnostic from the first commit �
 ### W6 — Frontend (moved earlier)
 | ID | Task | Deps | Effort | Notes |
 |---|---|---|---|---|
-| ~~W6-0~~ | ~~Frontend foundation: install deps, root layout, test harness~~ | — | 2d | **DONE 2026-10-01, reviewed (typescript).** Root layout and home page; npm lockfile committed; Vitest + React Testing Library (`src/**/*.test.tsx`) and Playwright (`e2e/`, Chromium, port 3100); CI `frontend` job. `next` pinned at 16.3.8 — the scaffolded 16.2.4 carried critical advisories. W6-1 inherits both test layers. |
+| ~~W6-0~~ | ~~Frontend foundation: install deps, root layout, test harness~~ | — | 2d | **DONE 2026-10-01, reviewed (typescript).** Root layout and home page; npm lockfile committed; Vitest + React Testing Library (`src/**/*.test.tsx`) and Playwright (`e2e/`, Chromium, port 3100); CI `frontend` job. `next` pinned at 16.3.8 — the scaffolded 16.2.4 carried critical advisories. W6-1 inherits both test layers. The app was then moved from the repository root into `frontend/` (same day). |
 | W6-1 | Questionnaire UI | W4'-2, **W7-1**, **W6-0** | 1–2w | **In the thin slice.** Anchor picker needs catalog autocomplete, not free text — so it depends on `GET /shoes` (W7-1), which must expose `version`/`gender` or the UI recreates the ambiguity W4'-1 rejects server-side. |
 | W6-2 | Interactive quadrant | W5-1a | 1w static + 1w interactive | **Moved from second-to-last into the thin slice.** Hand-placed shoes test the product hypothesis with no corpus. |
 | W6-3 | Results + confidence display | W6-2, W3-1 | 1w | Low-confidence results visibly distinct; gated-out shoes never shown. |
@@ -728,6 +728,7 @@ Durations assume a solo builder. The v2 note "estimates for a small team" no lon
 - Struck **W6-0** through: done and reviewed 2026-10-01. With W7-1 already done, both W6-1 prerequisites are met; the §13 $\mathbf{q}^*$ decision is what still gates it.
 - `next` raised 16.2.4 → 16.3.8 (and `eslint-config-next` to match): the scaffolded version fell inside the range of critical advisories. This is a dependency fix, not a §2 decision.
 - §12 Gantt: W6-0 marked `:done`; W6-1 now waits on W7-1 **and** W6-0 explicitly, matching §11 and the §6 graph.
+- The Next.js app moved from the repository root into `frontend/`, with its own `package.json`, lockfile, configs and `.gitignore`; the CI `frontend` job now runs there. Paths such as `src/app/` in this plan are relative to `frontend/`.
 - Progress 7 → 8 of 37. No §2 decision was changed.
 
 **v3.2, progress update (2026-09-25)** — no plan or decision change.

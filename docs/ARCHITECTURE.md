@@ -138,11 +138,12 @@ flowchart LR
 | `backend/app/eval/` | Calibration and metrics | Stub |
 | `backend/tests/` | Tests: 5 implemented files, 3 stubs | Partial |
 | `backend/data/` | Local data: `gearlab/` placeholder; landing store (gitignored) | Runtime |
-| `src/app/layout.tsx`, `src/app/page.tsx`, `src/app/globals.css` | Next.js App Router root layout, home page, global stylesheet | Implemented (§4.10) |
-| `src/app/survey/`, `src/app/results/`, `src/app/lib/` | Questionnaire and results pages, API client, shared types | Stub |
-| `src/app/page.test.tsx`, `e2e/` | Component test (Vitest) and end-to-end specs (Playwright) | Implemented (§4.10, §11) |
-| `package.json`, `package-lock.json` | npm manifest, scripts and committed lockfile | Implemented (§10.2) |
-| `vitest.config.mts`, `vitest.setup.ts`, `playwright.config.ts` | Test-runner configuration | Implemented (§4.10) |
+| `frontend/` | The Next.js application, a self-contained npm project with its own manifest, lockfile, configuration and `.gitignore`. The repository root has no `package.json` | Implemented (§4.10) |
+| `frontend/src/app/layout.tsx`, `page.tsx`, `globals.css` | Next.js App Router root layout, home page, global stylesheet | Implemented (§4.10) |
+| `frontend/src/app/survey/`, `results/`, `lib/` | Questionnaire and results pages, API client, shared types | Stub |
+| `frontend/src/app/page.test.tsx`, `frontend/e2e/` | Component test (Vitest) and end-to-end specs (Playwright) | Implemented (§4.10, §11) |
+| `frontend/package.json`, `frontend/package-lock.json` | npm manifest, scripts and committed lockfile | Implemented (§10.2) |
+| `frontend/vitest.config.mts`, `vitest.setup.ts`, `playwright.config.ts` | Test-runner configuration | Implemented (§4.10) |
 | `.github/workflows/ci.yml` | Continuous integration: two backend jobs and one frontend job | Implemented (§11) |
 | `scaffold.sh` | Non-destructive generator for the stub tree (54 `stub` entries; writes only files that do not exist) | Tooling |
 | `backend/scraping/`, `backend/NLP/` | Empty files from an earlier layout | Dead code (§12) |
@@ -506,9 +507,11 @@ has two endpoints; `POST /recommend` belongs to W7-2 and is not routed.
 - **Not yet wired:** `preferences.target_quadrant()`. `POST /survey` stores
   `goal_x_target` / `goal_y_target` as submitted (§12).
 
-### 4.10 Frontend shell and test harness — `src/app/`, repository root
+### 4.10 Frontend shell and test harness — `frontend/`
 
 The minimum the Next.js App Router needs in order to build, plus the two test layers that later frontend work builds on (W6-0). It contains no product feature yet: the survey and results pages are placeholders (§7).
+
+Everything in this section lives in `frontend/`, a self-contained npm project. Paths below are relative to it, and every `npm` command runs there.
 
 #### Structure
 | File | Role |
@@ -545,12 +548,13 @@ The minimum the Next.js App Router needs in order to build, plus the two test la
   - Port 3100 avoids colliding with a development server on the default 3000.
 
 #### Toolchain
+- **Location:** `frontend/` holds the manifest, lockfile, `tsconfig.json`, the ESLint, PostCSS, Next.js and test-runner configs, and a `.gitignore` for dependencies, build output and test artifacts. No lockfile exists above it, so Next.js treats `frontend/` as the project root without configuration.
 - **Package manager:** npm, with a committed `package-lock.json` (lockfile v3). `npm ci` reproduces the install.
 - **Pinning:** `next` and `eslint-config-next` are pinned exactly, at the same version. `engines.node` is `>=20.9.0`, the Next.js 16 minimum.
-- **Lint:** ESLint 9 flat config, using `eslint-config-next` `core-web-vitals` + `typescript`. It ignores `.venv/`, coverage and Playwright output.
+- **Lint:** ESLint 9 flat config, using `eslint-config-next` `core-web-vitals` + `typescript`. It ignores coverage and Playwright output. A `.venv/**` ignore entry remains from when the app lived at the repository root; it no longer matches anything.
   - Next.js 16's `next build` does not run ESLint, so lint is a separate CI step.
 - **Type-check:** `tsc --noEmit` (`npm run typecheck`). `next build` also type-checks every file that `tsconfig.json` includes, test files and configs among them.
-  - `tsconfig.json` excludes `.venv` and `backend` so the type-checker never walks the Python trees.
+  - Its `**/*.ts`, `**/*.tsx` and `**/*.mts` include globs are scoped to `frontend/`, so the type-checker never reaches `backend/` or `.venv/`.
 
 ---
 
@@ -739,8 +743,8 @@ Each stub holds a one-line docstring naming its intended responsibility and task
 | `scraping/rate_limiter.py` | Shared token bucket + backoff | Per-source quota is handled by `QuotaLedger`; a shared limiter and backoff remain planned (W0-3) |
 | `scraping/compile.py` | Ingest → normalise → snapshot | Planned (W1-full) |
 | `scraping/mentions.py` | Mention detection "via shoe_alias / NER" | **Redesign required:** most comments do not name a shoe, so attribution must come mainly from the video or thread subject, with aliases secondary (W1-3) |
-| `src/app/survey/page.tsx`, `results/page.tsx` | Questionnaire UI; ranked results with confidence | Placeholders that render `null` and build as static routes. Owned by **W6-1** and **W6-3**. The shell around them is implemented (§4.10) |
-| `src/app/lib/api.ts`, `types.ts` | Backend API client; shared types mirroring backend models | Empty modules. Under the §8 data path the client calls the app's own route handlers, never FastAPI directly (W6-1) |
+| `frontend/src/app/survey/page.tsx`, `results/page.tsx` | Questionnaire UI; ranked results with confidence | Placeholders that render `null` and build as static routes. Owned by **W6-1** and **W6-3**. The shell around them is implemented (§4.10) |
+| `frontend/src/app/lib/api.ts`, `types.ts` | Backend API client; shared types mirroring backend models | Empty modules. Under the §8 data path the client calls the app's own route handlers, never FastAPI directly (W6-1) |
 
 ---
 
@@ -781,7 +785,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   the survey is anonymous by design. The Next.js route handler (W6-1) is the
   only intended client. It must forward only `/survey` and `/shoes`, and cap
   request size (§12).
-- **Git hygiene:** `.gitignore` covers `.env`, `.env*.local`, `backend/data/*.sqlite3` (collected third-party content), `.pytest_cache`, `node_modules`, `.next` and Playwright output (`test-results/`, `playwright-report/`, `blob-report/`). `package-lock.json` is committed.
+- **Git hygiene:** the root `.gitignore` covers `.env`, `.env*.local`, `backend/data/*.sqlite3` (collected third-party content) and `.pytest_cache`. `frontend/.gitignore` covers `node_modules`, `.next`, `next-env.d.ts`, coverage and Playwright output (`test-results/`, `playwright-report/`, `blob-report/`). `frontend/package-lock.json` is committed.
 - **Dependency audit:** `npm audit` reports no known vulnerabilities at the pinned versions (§10.2).
 
 ### 9.2 External constraints
@@ -827,7 +831,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - Beyond these, implemented code uses only the standard library, including `argparse`, `dataclasses`, `datetime`, `enum`, `hashlib`, `hmac`, `json`, `logging`, `pathlib`, `sqlite3`, `urllib` and `zoneinfo`.
 - `pglast` is an optional development tool for checking DDL without a server, not a runtime dependency.
 
-### 10.2 Frontend (`package.json`, locked by `package-lock.json`)
+### 10.2 Frontend (`frontend/package.json`, locked by `frontend/package-lock.json`)
 | Package | Locked version | Purpose |
 |---|---|---|
 | `next` | 16.3.8 (exact pin) | App Router framework |
@@ -850,10 +854,10 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 
 ## 11. Testing architecture
 
-- **Runners:** `pytest` for the backend, run from the repository root: `python3 -m pytest backend/tests/ -q`. Vitest and Playwright for the frontend (§4.10): `npm test` and `npm run test:e2e`.
+- **Runners:** `pytest` for the backend, run from the repository root: `python3 -m pytest backend/tests/ -q`. Vitest and Playwright for the frontend (§4.10), run from `frontend/`: `npm test` and `npm run test:e2e`.
 - **Frontend tests:**
-  - **`src/app/page.test.tsx`** — 2 Vitest tests. The home page renders a level-1 heading `CruxUp` and a link whose `href` is `/survey`. Both use role-based queries.
-  - **`e2e/home.spec.ts`** — 2 Playwright tests:
+  - **`frontend/src/app/page.test.tsx`** — 2 Vitest tests. The home page renders a level-1 heading `CruxUp` and a link whose `href` is `/survey`. Both use role-based queries.
+  - **`frontend/e2e/home.spec.ts`** — 2 Playwright tests:
     - the home page has the title `CruxUp`, and its link navigates to `/survey`;
     - `GET /survey` returns 200. The URL assertion alone would also pass on a 404, which keeps the same URL; with the survey page removed this test fails and the first still passes.
 - **Isolation:** no network and no database. External APIs are replaced by an injected transport; SQLite state uses temporary paths; tests that check availability explicitly remove environment credentials; an autouse fixture supplies a synthetic author key.
@@ -934,7 +938,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - **Continuous integration** (`.github/workflows/ci.yml`, GitHub Actions; runs on pushes to `main`, on pull requests, and manually):
   - `unit` — Python 3.10 and 3.12, no database. Validates the catalogue, then runs the suite with an unreachable `DATABASE_URL`, proving the DB-backed tests skip rather than fail.
   - `integration` — a PostgreSQL 16 service container. Applies `0001_init.sql`, reverses it and checks zero tables remain, re-applies it, seeds the catalogue, runs the full suite, and **fails if any test skipped**, since a skip with a database present means the setup broke. It then checks `user_survey` is empty.
-  - `frontend` — Node 24. Runs `npm ci`, lint, type-check, Vitest, `next build`, then installs Chromium and runs Playwright against the production build. The Playwright HTML report is uploaded as an artifact when the job fails.
+  - `frontend` — Node 24, with every `run` step in `frontend/`. Runs `npm ci`, lint, type-check, Vitest, `next build`, then installs Chromium and runs Playwright against the production build. The Playwright HTML report is uploaded as an artifact when the job fails.
   - There is no deploy stage, because there is no hosting target.
   - The migration apply/reverse check is automated here; `SETUP.md` §3 remains the manual procedure for a local database.
 - **Stub test files:** `test_fit.py`, `test_aggregate.py`, `test_calibration.py`.
@@ -1003,8 +1007,8 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - **Module split mismatch:** collection sources live in `collector.py`, but stub modules for a per-source split remain under `backend/app/scraping/`.
 - **Migration edited in place:** `0001_init.sql` was changed after first use to add `prior_source`. That is acceptable before any deployment; later changes should be additive migrations.
 - **The frontend has no product pages.** The shell builds and is tested (§4.10), but `/survey` and `/results` render nothing, and `lib/api.ts` and `lib/types.ts` are empty. There are no route handlers, so the §8 data path does not exist on the frontend side yet. Tracked as **W6-1** and **W6-3**.
-- **End-to-end tests use different servers locally and in CI.** Local runs use `next dev` and CI uses `next start`, so behaviour that differs between development and production builds (for example prefetching, or dev-only warnings) can pass in one and fail in the other. CI is the authoritative run. To reproduce it locally, run `npm run build` and then `CI=1 npm run test:e2e`.
-- **A coding-agent environment makes `next dev` write files.** When Next.js 16.3 detects that it is running inside a coding agent (through environment variables such as `AI_AGENT` or `CLAUDECODE`), `next dev` creates `AGENTS.md` and `CLAUDE.md` at the repository root. If a `CLAUDE.md` already exists, it inserts its own rules block into it. Neither file is part of the repository, and `next start` and `next build` do not do this.
+- **End-to-end tests use different servers locally and in CI.** Local runs use `next dev` and CI uses `next start`, so behaviour that differs between development and production builds (for example prefetching, or dev-only warnings) can pass in one and fail in the other. CI is the authoritative run. To reproduce it locally, run `npm run build` and then `CI=1 npm run test:e2e` in `frontend/`.
+- **A coding-agent environment makes `next dev` write files.** When Next.js 16.3 detects that it is running inside a coding agent (through environment variables such as `AI_AGENT` or `CLAUDECODE`), `next dev` creates `AGENTS.md` and `CLAUDE.md` in its project directory, `frontend/`. If a `CLAUDE.md` already exists there, it inserts its own rules block into it. Neither file is part of the repository, and `next start` and `next build` do not do this.
 - **Documentation stubs:** `docs/eval-methodology.md` and `docs/lexicon-guide.md` are placeholders, and `README.md` is a single line.
 - **No corpus source is cleared** (§9.2), so the NLP half of the architecture has no permitted input today.
 
@@ -1031,10 +1035,11 @@ python3 backend/app/catalog/priors.py --refit | head -2          # LOOCV  MAE x 
 psql -d <db> -f backend/app/db/migrations/0001_init.sql          # applies clean on an empty database
 psql -d <db> -f backend/app/db/migrations/0001_init_down.sql     # reverses to zero tables
 CRUXUP_AUTHOR_SALT= python3 backend/app/scraping/collector.py; echo $?   # 2 — refuses to start
+cd frontend                                                      # every npm command below runs here
 npm ci                                                           # installs exactly what package-lock.json records
 npm run lint                                                     # no errors, no warnings
 npm run typecheck                                                # clean
-npm test                                                         # 2 passed (src/app/page.test.tsx)
+npm test                                                         # 2 passed (frontend/src/app/page.test.tsx)
 npm run build                                                    # prerenders /, /_not-found, /results, /survey as static
 npm run test:e2e                                                 # 2 passed (local, next dev)
 CI=1 npm run test:e2e                                            # 2 passed (production build, next start) — run after npm run build

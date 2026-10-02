@@ -1,17 +1,5 @@
-# dependencies
-/node_modules
-/.pnp
-.pnp.js
-
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
-
-# production
-/build
+# Frontend dependencies, build output and test artifacts are ignored by
+# frontend/.gitignore.
 
 # misc
 .DS_Store
@@ -24,13 +12,6 @@ yarn-error.log*
 
 # local env files
 .env*.local
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
 
 .env
 
@@ -65,9 +46,3 @@ backend/data/cache/*
 # timeline.md section 10 warns against. Regenerate with collector.py.
 backend/data/*.sqlite3
 backend/data/*.sqlite3-journal
-
-# playwright
-/test-results/
-/playwright-report/
-/blob-report/
-/playwright/.cache/
