@@ -149,7 +149,7 @@ prints what is wrong and touches nothing.
 ## 6. Verify
 
 ```bash
-python3 -m pytest backend/tests/ -q        # 64 tests, no network, no database
+python3 -m pytest backend/tests/ -q        # 1610 tests; database-backed ones skip if Postgres is unreachable
 python3 backend/app/catalog/validate.py    # catalogue invariants
 python3 backend/app/catalog/priors.py      # spec model vs hand placements
 ```
@@ -166,7 +166,30 @@ for f in ['backend/app/db/migrations/0001_init.sql',
 
 ---
 
-## 7. Frontend
+## 7. API
+
+The FastAPI service needs the migrated, seeded database from steps 3–5. It
+reads `DATABASE_URL` from the environment or `.env` on each request, and
+answers 503 if it has none.
+
+```bash
+cd backend
+uvicorn app.main:app --reload      # http://127.0.0.1:8000 (localhost only)
+```
+
+```bash
+curl -s localhost:8000/shoes | head -c 300                   # catalogue for the anchor picker
+curl -s -H 'content-type: application/json' \
+  -d '{"known_good_shoes": [{"brand": "Scarpa", "model": "Instinct"}]}' \
+  localhost:8000/survey                                      # 422: ambiguous -- lists VS and VSR
+```
+
+- A valid `POST /survey` **commits a row** and returns only `{"survey_token": ...}`. Use `store.py --dry-run` to try a submission without writing.
+- Interactive docs are at `/docs`. Only the Next.js route handler should call this service; do not expose it publicly.
+
+---
+
+## 8. Frontend
 
 ```bash
 npm install

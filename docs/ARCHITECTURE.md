@@ -2,7 +2,7 @@
 
 A reference for the structure, data model and design of the CruxUp climbing shoe recommender. It describes the software **as implemented** and marks where the planned design has not been built yet.
 
-- **Last verified against the codebase:** 2026-09-23
+- **Last verified against the codebase:** 2026-09-25
 - **Plan, tasks and decisions of record:** [`timeline.md`](../timeline.md). Decision IDs (D1–D12) and task IDs (W0-1a, …) below refer to it.
 - **Local setup:** [`SETUP.md`](../SETUP.md)
 - **Verification:** the commands at the foot of this document re-check the claims that can be checked mechanically.
@@ -21,8 +21,8 @@ A reference for the structure, data model and design of the CruxUp climbing shoe
   - Q1 performance+stiff · Q2 comfort+stiff · Q3 comfort+soft · Q4 performance+soft
 - **Placement provenance.** A shoe's position has one of three sources, ranked by confidence: **corpus** (aggregated community discussion) > **hand** (human judgement) > **spec** (derived from manufacturer specifications). The source is stored with every placement.
 - **Build state:**
-  - **Implemented:** the product database schema, the shoe catalogue and its validator, a spec-to-placement model, the catalogue loader, environment configuration, a source-agnostic corpus collector, survey capture (§4.7), and preference→target (`q*`) derivation (§4.8).
-  - **Not implemented:** the HTTP API, the recommendation scorer, NLP extraction and aggregation, evaluation, and the entire web frontend. These exist as documented stubs (§7). Survey *capture* — validation, anchor resolution and persistence — is implemented (§4.7), and so is the pure `q*` function (§4.8), but nothing yet connects the two, and there is no HTTP surface over either.
+  - **Implemented:** the product database schema, the shoe catalogue and its validator, a spec-to-placement model, the catalogue loader, environment configuration, a source-agnostic corpus collector, survey capture (§4.7), preference→target (`q*`) derivation (§4.8), and an HTTP API with `POST /survey` and `GET /shoes` (§4.9).
+  - **Not implemented:** `POST /recommend`, the recommendation scorer, NLP extraction and aggregation, evaluation, and the entire web frontend. These exist as documented stubs (§7). Survey capture is reachable over HTTP (§4.9), but the pure `q*` function (§4.8) is still not called by it.
 - **Current binding constraint:** **no corpus source is cleared.** YouTube collection failed a terms review, Reddit access is pending, and forum terms are unreviewed (`timeline.md` §10.2; D11 reopened). The planned first release (D7) is designed to work **without** a corpus, on hand- and spec-derived placements.
 
 ---
@@ -64,6 +64,13 @@ flowchart LR
     PREF[preferences.py<br/>preferences → q*]
   end
 
+  subgraph HTTP["HTTP API — implemented"]
+    MAIN[main.py<br/>app + error handlers]
+    DEPS[api/deps.py<br/>body · connection · catalogue]
+    RSURV[POST /survey]
+    RSHOE[GET /shoes]
+  end
+
   CFG[config.py<br/>load_dotenv]
 
   YAML --> VAL --> SEED --> SHOE
@@ -79,15 +86,23 @@ flowchart LR
   ANC --> SHOE & ALIAS
   STO --> SURV
   PREF -.->|"q*, not yet wired"| STO
+  MAIN --> RSURV
+  MAIN --> RSHOE
+  DEPS --> RSURV
+  DEPS --> RSHOE
+  CFG --> DEPS
+  RSURV --> STO
+  RSHOE --> SHOE
 
-  API[FastAPI app<br/>main.py + routes]:::planned
+  RREC[POST /recommend<br/>W7-2]:::planned
   SCORE[recommend/<br/>fit · style · score · confidence]:::planned
   NLP[nlp/<br/>extract · aggregate]:::planned
   EVAL[eval/<br/>gearlab_map · metrics · calibrate]:::planned
   WEB[Next.js app<br/>survey · results]:::planned
 
-  WEB -.-> API -.-> SCORE -.-> SHOE
-  API -.-> STO
+  WEB -.->|via route handler| RSURV
+  WEB -.->|via route handler| RSHOE
+  WEB -.-> RREC -.-> SCORE -.-> SHOE
   SCORE -.-> REC
   LAND -.-> NLP -.-> SHOE
   EVAL -.-> NLP
@@ -112,12 +127,14 @@ flowchart LR
 | `backend/app/db/client.py`, `models.py` | Database client, typed models | Stub |
 | `backend/app/scraping/collector.py` | Collector, sources, quota ledger, landing store | Implemented |
 | `backend/app/scraping/{sources,youtube,reddit,rate_limiter,compile,mentions}.py` | Originally planned per-module split for collection | Stub (§7) |
-| `backend/app/main.py`, `backend/app/api/routes/` | FastAPI app and routes | Stub |
+| `backend/app/main.py`, `backend/app/api/deps.py` | FastAPI app, error handlers; body parsing, connection and catalogue dependencies | Implemented (§4.9) |
+| `backend/app/api/routes/survey.py`, `shoes.py` | `POST /survey`, `GET /shoes` | Implemented (§4.9) |
+| `backend/app/api/routes/recommend.py` | `POST /recommend` | Stub (W7-2) |
 | `backend/app/survey/` | Survey capture: `schema.py` validation, `anchors.py` catalogue resolution, `store.py` persistence; `preferences.py` preference → `q*` derivation | Implemented (§4.7, §4.8) |
 | `backend/app/recommend/` | Fit, style, score, confidence | Stub |
 | `backend/app/nlp/` | Extraction, aggregation, lexicon, distillation | Stub |
 | `backend/app/eval/` | Calibration and metrics | Stub |
-| `backend/tests/` | Tests: 4 implemented files, 3 stubs | Partial |
+| `backend/tests/` | Tests: 5 implemented files, 3 stubs | Partial |
 | `backend/data/` | Local data: `gearlab/` placeholder; landing store (gitignored) | Runtime |
 | `src/app/` | Next.js App Router frontend: `page.tsx`, `layout.tsx`, `survey/`, `results/`, `lib/api.ts`, `lib/types.ts` | Stub |
 | `scaffold.sh` | Non-destructive generator for the stub tree (54 `stub` entries; writes only files that do not exist) | Tooling |
@@ -401,6 +418,87 @@ together: the discipline, terrain and level keys, and the output precision
   `goal_y_target` exactly as supplied. The submission allow-list has no key for
   the raw `goal` slider, and no column stores it. See §12.
 
+### 4.9 HTTP API — `backend/app/main.py`, `backend/app/api/`
+
+A FastAPI service over the survey layer (§4.7) and the catalogue (W7-1). It
+has two endpoints; `POST /recommend` belongs to W7-2 and is not routed.
+
+| File | Role |
+|---|---|
+| `main.py` | `create_app()` factory and module-level `app`; mounts both routers; exception handlers |
+| `api/deps.py` | `json_body` (request-body parsing), `database_url()`, `get_conn()` (one connection per request), `get_catalog()` |
+| `api/routes/survey.py` | `POST /survey` |
+| `api/routes/shoes.py` | `GET /shoes` |
+
+- **Running:** `cd backend && uvicorn app.main:app`, which binds `127.0.0.1:8000`
+  by default. `app` is a package rooted at `backend/`. The survey modules are
+  imported flat through their own directory, the way `store.py` imports its
+  siblings, so the service and `store.py` share one `anchors` module object.
+- **`POST /survey`** is a thin wrapper. It calls
+  `build_survey_row(payload, PostgresCatalog(conn))`, then
+  `insert_survey(conn, row)`. It has no request model and no checks of its own,
+  so its rules cannot drift from `survey/`.
+
+  | Outcome | Status | Body |
+  |---|---|---|
+  | Valid submission | 201 | `{"survey_token": "..."}`; nothing else is echoed |
+  | Invalid submission | 422 | `{"errors": [...]}`: `build_survey_row`'s list verbatim, every error in one response. Nothing is written |
+  | Body does not parse (malformed syntax, invalid UTF-8, nesting past the parser's recursion limit) | 422 | `{"errors": ["request body is not valid JSON"]}` |
+  | Database unreachable, or `DATABASE_URL` unset | 503 | `{"detail": "database unavailable"}` |
+  | Any other database or unexpected error | 500 | `{"detail": "could not complete the request"}` |
+
+  - **Non-object bodies:** a body that parses but is not an object (an array,
+    string, number, `null` or empty body, or a non-JSON content type) is passed
+    to `build_survey_row`, which rejects it. The API adds no shape rule of its own.
+  - **Invalid submissions read but never write:** anchor resolution reads the
+    catalogue even for an invalid submission, so every error is reported at
+    once. Nothing is committed on that path; the connection is closed without a
+    commit, which discards the read transaction.
+- **Body parsing** happens in `deps.json_body`, not FastAPI's `Body()`.
+  - FastAPI turns only a `JSONDecodeError` into its validation error. A
+    `RecursionError` (deep nesting) or `UnicodeDecodeError` (invalid UTF-8)
+    became a 400 of a different shape, which no handler saw and which was
+    never logged.
+  - `json_body` catches `(ValueError, RecursionError)`, the same pair
+    `store.main()` catches. Otherwise it follows `Body()`'s rules: an empty
+    body is `null`; JSON is parsed with no content type, or with
+    `application/json` or `application/*+json`; any other content type passes
+    through as raw bytes.
+  - A test pins that `/survey` declares no request body or parameters to
+    FastAPI, so the framework can never validate anything ahead of
+    `build_survey_row`. As a consequence, `/docs` shows no request schema
+    for `/survey`. The payload shape is `survey/schema.py` (§4.7), which is
+    not duplicated in OpenAPI so the two cannot drift.
+- **`GET /shoes`** returns every `shoe` row as
+  `{id, brand, model, version, gender}`, ordered by brand, model, version and
+  gender. `version` is `''` for a base model.
+  - **Why `version` and `gender`:** they distinguish the three pairs that share
+    `(brand, model)`. A test proves that every returned item, submitted back as
+    an anchor, resolves to exactly its own `id`, so a picker built on this list
+    cannot produce an ambiguous anchor.
+  - **No `status` filter,** because anchor resolution matches shoes of any
+    status.
+  - **No pagination.** The catalogue has 30 rows today and ~100 under D12.
+- **Connections:** `get_conn()` opens one psycopg connection per request, with
+  `connect_timeout=5`. The catalogue reads and the insert share it, and it is
+  always closed. There is no pool, so concurrent requests each hold their
+  own connection against the server's `max_connections`.
+- **Configuration:** `DATABASE_URL` is resolved at request time, from the
+  environment first and then `.env`. With no value, the API fails closed with
+  a 503 rather than guessing a database.
+- **Error hygiene:** response bodies are fixed strings, with no exception text,
+  DSN, SQL or submitted content. The server log records only the exception
+  class, the class of any chained cause, the method and the path.
+- **Deliberately not in the service:**
+  - no CORS middleware, because the browser never calls it directly (§8);
+  - no request-size limit;
+  - `/docs` and `/openapi.json` stay enabled.
+
+  The Next.js route handler (W6-1) is the internet-facing layer and owns these
+  controls (§12).
+- **Not yet wired:** `preferences.target_quadrant()`. `POST /survey` stores
+  `goal_x_target` / `goal_y_target` as submitted (§12).
+
 ---
 
 ## 5. Data model (PostgreSQL)
@@ -541,13 +639,19 @@ erDiagram
 3. On quota exhaustion, the source returns partial results and collection moves on.
 
 ### 6.4 Capturing a survey
-1. `schema.validate()` checks scalar fields and shape — no catalogue or database
-   needed, so an invalid submission is rejected before a connection is opened.
+Two entry points share one path: `POST /survey` (§4.9) and the `store.py` CLI.
+The planned questionnaire (W6-1) fills its anchor picker from `GET /shoes`, and
+submits each chosen shoe as `{brand, model, version, gender}`.
+1. `schema.validate()` checks scalar fields and shape without the catalogue. The
+   CLI runs it before opening a connection, so an invalid file is rejected
+   offline. The API runs it inside `build_survey_row()`, together with step 2.
 2. `anchors.resolve_anchors()` resolves each anchor to a `shoe.id` against the
    catalogue, or reports an unknown, ambiguous or contradictory entry.
 3. Both error lists are merged, so a caller sees every problem in one round trip.
-4. A `survey_token` is generated and the row is inserted in one transaction;
+   The API returns them as a 422 without writing anything.
+4. A `survey_token` is generated and the row is inserted in one transaction.
    `--dry-run` exercises the whole path, including JSONB adaptation, then rolls back.
+5. The API returns only the `survey_token` (201). It is the sole handle on the row.
 
 `goal_x_target` / `goal_y_target` are currently stored exactly as submitted. The
 path does not yet call `preferences.target_quadrant()` (§4.8) to derive them.
@@ -566,10 +670,7 @@ Each stub holds a one-line docstring naming its intended responsibility and task
 
 | Stub | Docstring intent | Current design (overrides the docstring) |
 |---|---|---|
-| `backend/app/main.py` | FastAPI entrypoint mounting routes | Owned by **W7-1**. `fastapi` and `uvicorn` are declared but not yet imported anywhere |
-| `api/routes/survey.py` | `POST /survey` → persist survey, derive q* | Owned by **W7-1**. A thin wrapper only: `survey/store.py` already validates and persists and `survey/preferences.py` already derives `q*`, and duplicating rules here would let them drift. How the raw `goal` slider reaches `target_quadrant()` is still open (§12) |
-| `api/routes/recommend.py` | `POST /recommend` → ranked results + confidence | Owned by **W7-2**, after the scorer exists (W3-3) |
-| `api/routes/shoes.py` | `GET /shoes`, `/shoes/{id}` | Owned by **W7-1**. Backs the anchor picker, so it must return `version` and `gender` — three catalogue pairs share `(brand, model)` and the UI cannot disambiguate without them |
+| `api/routes/recommend.py` | `POST /recommend` → ranked results + confidence | Owned by **W7-2**, after the scorer exists (W3-3). Not routed by `main.py` |
 | `db/client.py` | Supabase/Postgres client | Implemented code uses `psycopg` directly against `DATABASE_URL`, which keeps the database portable |
 | `db/models.py` | Typed models mirroring migrations; cites "PROJECT_PLAN §8" | That file does not exist; the schema of record is `timeline.md` §8 and `0001_init.sql` |
 | `recommend/fit.py`, `style.py`, `confidence.py` | §7.2, §7.3, §7.7 | Confidence must reflect `prior_source` |
@@ -602,7 +703,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - **Source-agnostic collection** (D11). No single data source is load-bearing; sources are pluggable adapters that may be unavailable.
 - **Non-commercial and advertising-free** (D11). The product carries no advertising. Using free API tiers under non-commercial terms constrains future monetisation for as long as that data is in use.
 - **Privacy by construction** (D4). No images, no biometrics, no personal identifiers; author identity exists only as a keyed pseudonym.
-- **The browser never reaches the service layer directly** (decided 2026-09-21, `timeline.md` §6). The planned data path is browser → Next.js route handler → FastAPI on localhost → PostgreSQL. The frontend talks only to its own origin, so there is no CORS surface and the backend is not addressable from the client. The alternative — querying PostgreSQL from TypeScript — was rejected because it would duplicate the anchor resolution, allow-lists and domain guards that already exist and are tested in Python, leaving two validators to keep in step.
+- **The browser never reaches the service layer directly** (decided 2026-09-21, `timeline.md` §6). The data path is browser → Next.js route handler → FastAPI on localhost → PostgreSQL. The FastAPI end is implemented without CORS middleware (§4.9); the Next.js route handler is planned (W6-1). The frontend talks only to its own origin, so there is no CORS surface and the backend is not addressable from the client. The alternative — querying PostgreSQL from TypeScript — was rejected because it would duplicate the anchor resolution, allow-lists and domain guards that already exist and are tested in Python, leaving two validators to keep in step.
 
 ---
 
@@ -612,6 +713,20 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - **Secrets** come only from the environment or a gitignored `.env`; `.env.example` holds names only. The loader never returns or logs values.
 - **Author pseudonymisation** is keyed and fails closed (§4.6).
 - **Survey data** holds no direct identifiers (§5.3).
+- **HTTP surface** (§4.9):
+  - **Inputs:** `POST /survey` takes only a body, and every rule applied to it
+    is the survey layer's. A caller cannot supply `survey_token` or `shoe_id`
+    (§4.7).
+  - **Queries:** all SQL is parameterised. `GET /shoes` runs a fixed query.
+  - **Responses:** 201 returns only the token. 5xx bodies are fixed strings.
+    The log never records a payload, DSN or exception message.
+  - **Error text quotes input.** 422 messages quote submitted values such as
+    anchor brand and model. The frontend must render them as text, never as
+    markup.
+- **Exposure:** the API binds to localhost and has no authentication, because
+  the survey is anonymous by design. The Next.js route handler (W6-1) is the
+  only intended client. It must forward only `/survey` and `/shoes`, and cap
+  request size (§12).
 - **Git hygiene:** `.gitignore` covers `.env`, `.env*.local`, `backend/data/*.sqlite3` (collected third-party content) and `.pytest_cache`.
 
 ### 9.2 External constraints
@@ -640,11 +755,14 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 ### 10.1 Python (`backend/requirements.txt`)
 | Package | Imported by implemented code | Purpose |
 |---|---|---|
-| `psycopg[binary]` | Yes — `seed.py` | PostgreSQL access |
+| `psycopg[binary]` | Yes — `seed.py`, `survey/store.py`, `api/` | PostgreSQL access |
 | `pyyaml` | Yes — `validate.py`, `seed.py`, `priors.py`, tests | Catalogue parsing |
 | `numpy` | Yes — `priors.py` (refit only), tests | Model fitting; test dependency |
 | `pytest` | Yes — tests | Test runner |
-| `fastapi`, `uvicorn[standard]`, `pydantic`, `pydantic-settings` | No | Planned API |
+| `fastapi`, `pydantic` | Yes — `main.py`, `api/` | HTTP API (§4.9) |
+| `uvicorn[standard]` | Run as the server (`uvicorn app.main:app`); not imported | ASGI server |
+| `httpx` | Yes — tests (`fastapi.testclient`) | Test dependency |
+| `pydantic-settings` | No | Planned typed settings |
 | `supabase` | No | Declared for hosted Postgres; implemented code uses `psycopg` |
 | `praw` | No | Planned Reddit adapter |
 | `google-api-python-client` | No | Declared for YouTube; the implemented adapter uses stdlib `urllib` |
@@ -704,18 +822,47 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
     over-large integer `goal`; read-only tables; the import-time invariant check
     fails for bad constants, including under `python -O`
   - golden values with hand-checked arithmetic
-- **Database-backed tests are opt-in by reachability.** Ten tests use a live
-  PostgreSQL when one is available and skip cleanly when it is not, so the default
-  suite stays hermetic. Each rolls back and asserts it left `user_survey` empty.
-  This is the first automated database coverage in the project; migration
-  apply/reverse remains manual (`SETUP.md` §3).
+- **`backend/tests/test_api.py`** — 57 tests (30 functions), through FastAPI's
+  `TestClient`. Hermetic tests swap `get_conn` / `get_catalog` for fakes or a
+  static catalogue; some keep the real `get_conn` and stub only `psycopg.connect`.
+  - wiring: both routes registered, read from the OpenAPI schema; no
+    `/recommend` (schema check and a live 404); no CORS middleware; sync
+    handlers
+  - no validation of its own: a multi-error payload, and a 12-case parity
+    table, each assert that the 422 list *equals* `build_survey_row()`'s list
+    and that nothing is written. The OpenAPI operation for `/survey` must
+    declare no body or parameters, so FastAPI itself validates nothing. `{}`, anchors-only and non-object bodies get
+    the survey layer's verdict, not FastAPI's
+  - body parsing: malformed JSON, invalid UTF-8, and array or object nesting a
+    million deep all yield the one 422 envelope, logged without the body;
+    every JSON content type FastAPI parsed is still parsed
+  - error hygiene: 503 and 500 bodies never contain a marker planted in the
+    exception; `DATABASE_URL` unset gives 503 without a connection attempt;
+    a non-database exception gives a JSON 500
+  - connection lifecycle: one connection per request, closed exactly once on
+    success, validation failure, database error and unexpected error
+  - `GET /shoes`: exact keys, `''` versions, string ids, the three shared
+    `(brand, model)` pairs, and a round trip — every item resolves back to
+    its own `id`
+- **Database-backed tests are opt-in by reachability.** Fourteen tests (ten in
+  `test_survey.py`, four in `test_api.py`) use a live PostgreSQL when one is
+  available, and skip cleanly when it is not, so the default suite stays
+  hermetic.
+  - **Every one but one** rolls back and asserts it left `user_survey` empty.
+  - **The exception** is `test_api.py`'s persistence test. Persistence can only
+    be shown by a real commit, observed from a second connection, so that test
+    commits and then deletes its row unconditionally.
+
+  CI's check that no `user_survey` rows remain is the backstop. This is the
+  project's first automated database coverage; migration apply/reverse remains
+  manual for local databases (`SETUP.md` §3).
 - **Continuous integration** (`.github/workflows/ci.yml`, GitHub Actions; runs on pushes to `main`, on pull requests, and manually):
   - `unit` — Python 3.10 and 3.12, no database. Validates the catalogue, then runs the suite with an unreachable `DATABASE_URL`, proving the DB-backed tests skip rather than fail.
   - `integration` — a PostgreSQL 16 service container. Applies `0001_init.sql`, reverses it and checks zero tables remain, re-applies it, seeds the catalogue, runs the full suite, and **fails if any test skipped**, since a skip with a database present means the setup broke. It then checks `user_survey` is empty.
   - There is no frontend job yet: the app cannot build (§12). There is no deploy stage, because there is no hosting target.
   - The migration apply/reverse check is automated here; `SETUP.md` §3 remains the manual procedure for a local database.
 - **Stub test files:** `test_fit.py`, `test_aggregate.py`, `test_calibration.py`.
-- **Total:** 1,553 tests with a database reachable; 1,543 passed and 10 skipped without one.
+- **Total:** 1,610 tests with a database reachable; 1,596 passed and 14 skipped without one. The same counts hold on Python 3.9 (FastAPI 0.128, Starlette 0.49) and 3.14 (FastAPI 0.141, Starlette 1.7).
 
 ---
 
@@ -746,8 +893,9 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
     target therefore cannot be recomputed exactly if the mapping constants
     change later.
 
-  The planned owner is W7-1's `POST /survey`, but that task does not yet
-  depend on W4'-2.
+  `POST /survey` (W7-1) now exists but was delivered without this wiring,
+  because the choice between converting `goal` in the endpoint and adding a
+  column is still open (`timeline.md` §13).
 - **Two quadrant classifiers.** `catalog/priors.quadrant()` and
   `survey/preferences.quadrant_of()` both label points on the same plane. They
   differ on axis points: the first returns `ON-AXIS`, the second raises. They
@@ -755,14 +903,30 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - **Catalogue size band is stale.** `validate.py` enforces 25–30 shoes, reflecting the superseded D6; the target is now ~100 (D12). It must be raised before the catalogue expands.
 - **Refit input filtering in tests.** `test_priors.py` refits on every shoe with coordinates. Once `prior_source: spec` rows exist, it must filter to `hand` rows, as the `--refit` CLI already does, or the model would be fitted partly on its own output.
 - **No prices.** `msrp_usd` is null on every catalogue row, so budget filtering cannot be relied on (`validate.py --require-msrp` fails).
-- **Unused declared dependencies:** 10 of 14 packages are declared ahead of use (§10.1).
+- **Unused declared dependencies:** 7 of 15 packages are declared ahead of use (§10.1).
+- **Unpinned dependencies.** `backend/requirements.txt` pins no versions, so CI
+  installs the newest releases. Running the suite against them surfaced two
+  test breaks that the code itself did not have:
+  - FastAPI 0.14x no longer lists included routes in `app.routes`.
+  - Python 3.12+ decouples the JSON parser's recursion guard from
+    `sys.getrecursionlimit()`.
+
+  The tests now use version-stable checks, but a future release can still break
+  CI without a code change.
+- **Service-edge controls live in the planned Next.js route handler.** The API
+  has no request-size limit, leaves `/docs` and `/openapi.json` enabled, and
+  has no authentication (§4.9, §9.1). This is safe only while it is reachable
+  solely through that handler. W6-1 must therefore forward only `/survey` and
+  `/shoes`, and cap request bodies well above a real submission (a few KB).
+- **No connection pool.** Each request opens and closes its own connection. At
+  current scale that is simpler than a pool; under load, or with multiple
+  worker processes, it can approach PostgreSQL's `max_connections`.
 - **Stale stub docstrings** in `catalog/sizing.py`, `recommend/score.py`, `eval/gearlab_map.py`, `scraping/mentions.py` and `db/models.py` contradict the current design (§7).
 - **Broken references:** `db/models.py` and `scaffold.sh` cite `PROJECT_PLAN.md`, which does not exist; the plan of record is `timeline.md`.
 - **Legacy dead code:** `backend/scraping/` (`compile.py`, `sources.py`, `NLP_training_data.txt`) and `backend/NLP/` (`processing/NLP.py`, `training/trainer.py`) are empty files from an earlier layout, duplicated by `backend/app/`.
 - **Module split mismatch:** collection sources live in `collector.py`, but stub modules for a per-source split remain under `backend/app/scraping/`.
 - **Migration edited in place:** `0001_init.sql` was changed after first use to add `prior_source`. That is acceptable before any deployment; later changes should be additive migrations.
 - **The frontend cannot build.** `src/app/layout.tsx` and `src/app/page.tsx` are empty files, and the App Router requires a root layout that renders `<html>`/`<body>`. There is also no installed dependency tree (no `node_modules`, no lockfile) and no test runner declared in `package.json`, so no frontend test or end-to-end tooling can run. Tracked as **W6-0**.
-- **No HTTP layer exists.** `fastapi` and `uvicorn` are declared in `backend/requirements.txt` but imported nowhere; `main.py` and all three route modules are one-line stubs. Survey capture is therefore reachable only through its CLI. Tracked as **W7-1**.
 - **Documentation stubs:** `docs/eval-methodology.md` and `docs/lexicon-guide.md` are placeholders, and `README.md` is a single line.
 - **No corpus source is cleared** (§9.2), so the NLP half of the architecture has no permitted input today.
 
@@ -773,13 +937,17 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 These commands re-check the mechanically verifiable claims in this document:
 
 ```bash
-python3 -m pytest backend/tests/ -q                              # 1553 passed (database reachable)
+python3 -m pytest backend/tests/ -q                              # 1610 passed (database reachable)
 python3 -m pytest backend/tests/test_collector.py -q             # 25 passed
 python3 -m pytest backend/tests/test_priors.py -q                # 39 passed
 python3 -m pytest backend/tests/test_survey.py -q                # 155 passed
 python3 -m pytest backend/tests/test_preferences.py -q           # 1334 passed
+python3 -m pytest backend/tests/test_api.py -q                   # 57 passed (4 skip without a database)
 DATABASE_URL=postgresql://localhost:1/nope \
-  python3 -m pytest backend/tests/ -q                            # 1543 passed, 10 skipped — the suite is hermetic
+  python3 -m pytest backend/tests/ -q                            # 1596 passed, 14 skipped — the suite is hermetic
+(cd backend && uvicorn app.main:app --port 8000) &                # then, in another shell:
+curl -s localhost:8000/shoes | python3 -c "import json,sys; print(sorted(json.load(sys.stdin)[0]))"   # ['brand', 'gender', 'id', 'model', 'version']
+curl -s -H 'content-type: application/json' -d '{"email":"x"}' localhost:8000/survey   # 422 {"errors": ["unknown key(s) ['email']: ..."]}
 python3 backend/app/catalog/validate.py | tail -1                # catalogue valid
 python3 backend/app/catalog/priors.py --refit | head -2          # LOOCV  MAE x = 0.139  MAE y = 0.113  agreement = 87%
 psql -d <db> -f backend/app/db/migrations/0001_init.sql          # applies clean on an empty database
