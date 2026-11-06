@@ -6,7 +6,7 @@ const DEFAULT_API_URL = "http://127.0.0.1:8000";
 const UPSTREAM_TIMEOUT_MS = 10_000;
 // The only backend paths the app may reach; /docs, /openapi.json and anything
 // added to FastAPI later stay unreachable from the internet.
-const ALLOWED_PATHS: readonly string[] = ["/survey", "/shoes", "/quadrant"];
+const ALLOWED_PATHS: readonly string[] = ["/survey", "/shoes", "/quadrant", "/recommend"];
 
 export function backendUrl(path: string): string {
   const base = (process.env.CRUXUP_API_URL || DEFAULT_API_URL).replace(/\/+$/, "");
