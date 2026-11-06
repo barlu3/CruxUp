@@ -616,7 +616,7 @@ Everything in this section lives in `frontend/`, a self-contained npm project. P
 | `.env.example` | Documents `CRUXUP_API_URL`, the backend address the route handlers use (§4.11). |
 
 #### Build output
-- `next build` prerenders `/`, `/_not-found`, `/survey`, `/results` and `/quadrant` as static content (○). The route handlers `/api/survey`, `/api/shoes` and `/api/quadrant` are dynamic (ƒ).
+- `next build` prerenders `/`, `/_not-found`, `/survey`, `/results` and `/quadrant` as static content (○). The route handlers `/api/survey`, `/api/shoes`, `/api/quadrant` and `/api/recommend` are dynamic (ƒ).
 - Route handlers and client components exist (§4.11, §4.12). There is no middleware and no server action.
 - **No web fonts are loaded.** `next/font/google` would download fonts during `next build`, which would make the build depend on network access.
 - **Module alias:** `@/*` resolves to `src/*`, in both `tsconfig.json` and Vitest (`resolve.tsconfigPaths`). Nothing imports through it yet.
@@ -1019,7 +1019,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - **Privacy by construction** (D4). No images, no biometrics, no personal identifiers; author identity exists only as a keyed pseudonym.
 - **`q*` has a single author** (decided 2026-10-02, `timeline.md` v3.3). The survey layer computes the user's target when a survey is saved and stores it with the raw answers and a mapping version. Clients cannot supply it, and the scorer reads it (except for rows stored before W4'-4a, which it recomputes without the goal, §4.13). One author means a survey's target never shifts silently when the mapping constants change, and a stored target can always be audited against its inputs. *(Partly built: capture derives `q*` and refuses client targets (W4'-4a, part); the raw answer and mapping version wait for the rest of W4'-4a and W4'-4b.)*
 - **The first results are a style match** (decided 2026-10-02). The v0 scorer ranks by quadrant proximity only, and labels fit and budget as not assessed rather than inventing them. Results are written once, so later feedback (§9.4) stays tied to what each user actually saw. **Superseded in part on 2026-11-06** (`timeline.md` §13): the scorer as built also assesses Fit (anchor families plus a judgement Fit_cat table pending climber sign-off) and Budget, computes confidence, and upserts its rows on re-request; a row with feedback is frozen, so feedback still stays tied to what the user saw (§4.9). The user kept it as built. *(Built: W3-1a, W7-2; the results page is W6-3.)*
-- **The browser never reaches the service layer directly** (decided 2026-09-21, `timeline.md` §6). The data path is browser → Next.js route handler → FastAPI on localhost → PostgreSQL. Both ends are implemented: FastAPI without CORS middleware (§4.9), and three Next.js route handlers that relay server-side (§4.11). The frontend talks only to its own origin, so there is no CORS surface and the backend is not addressable from the client. The alternative — querying PostgreSQL from TypeScript — was rejected because it would duplicate the anchor resolution, allow-lists and domain guards that already exist and are tested in Python, leaving two validators to keep in step.
+- **The browser never reaches the service layer directly** (decided 2026-09-21, `timeline.md` §6). The data path is browser → Next.js route handler → FastAPI on localhost → PostgreSQL. Both ends are implemented: FastAPI without CORS middleware (§4.9), and four Next.js route handlers that relay server-side (§4.11). The frontend talks only to its own origin, so there is no CORS surface and the backend is not addressable from the client. The alternative — querying PostgreSQL from TypeScript — was rejected because it would duplicate the anchor resolution, allow-lists and domain guards that already exist and are tested in Python, leaving two validators to keep in step.
 
 ---
 
@@ -1133,7 +1133,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 ## 11. Testing architecture
 
 - **Runners:** `pytest` for the backend, run from the repository root: `python3 -m pytest backend/tests/ -q`. Vitest and Playwright for the frontend (§4.10), run from `frontend/`: `npm test` and `npm run test:e2e`.
-- **Frontend tests** (paths under `frontend/`): 446 Vitest tests in 19 files and 35 Playwright tests in 4 files.
+- **Frontend tests** (paths under `frontend/`): 448 Vitest tests in 19 files and 35 Playwright tests in 4 files.
   - **`src/app/page.test.tsx`** — 3 Vitest tests. The home page renders a level-1 heading `CruxUp`, a link whose `href` is `/survey`, and a link whose `href` is `/quadrant`. All use role-based queries.
   - **`src/app/survey/page.test.tsx`** — 1 test: the page's metadata title, and that it renders a single `<h1>`.
   - **`src/app/lib/payload.test.ts`** — 8 tests (the eighth checks that chosen shoes keep their order, which the error links rely on):
@@ -1309,7 +1309,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   - The migration apply/reverse check is automated here; `SETUP.md` §3 remains the manual procedure for a local database.
 - **Scorer test files** (§4.13): `test_score.py` (75), `test_fit.py` (47), `test_style.py` (21), `test_confidence.py` (33), `test_scorer_config.py` (19) and `test_recommend_personas.py` (16). None needs a database.
 - **Stub test files:** `test_aggregate.py`, `test_calibration.py`.
-- **Total:** backend 2,017 passed with a seeded PostgreSQL 16.15, and 1,991 passed plus 26 skipped without one (measured 2026-11-06 on the W6-3 branch). Frontend: 446 Vitest tests and 35 Playwright tests (dev and `CI=1`).
+- **Total:** backend 2,017 passed with a seeded PostgreSQL 16.15, and 1,991 passed plus 26 skipped without one (measured 2026-11-06 on the W6-3 branch). Frontend: 448 Vitest tests and 35 Playwright tests (dev and `CI=1`).
 
 ---
 
@@ -1442,7 +1442,7 @@ cd frontend                                                      # every npm com
 npm ci                                                           # installs exactly what package-lock.json records
 npm run lint                                                     # no errors, no warnings
 npm run typecheck                                                # clean
-npm run test:coverage                                            # 446 passed in 19 files; coverage thresholds met
+npm run test:coverage                                            # 448 passed in 19 files; coverage thresholds met
 npm run build                                                    # static: /, /_not-found, /quadrant, /results, /survey; dynamic: /api/quadrant, /api/recommend, /api/shoes, /api/survey
 npm run test:e2e                                                 # 35 passed (local, next dev + mock API on :8100)
 CI=1 npm run test:e2e                                            # 35 passed (production build, next start) — run after npm run build

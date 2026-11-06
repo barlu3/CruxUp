@@ -178,6 +178,28 @@ describe("SurveyForm", () => {
     await waitFor(() => expect(push.mock.calls).toEqual([["/results"]]));
   });
 
+  it("posts the survey exactly once when sessionStorage throws", async () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("blocked", "SecurityError");
+    });
+    const user = await renderReady();
+    await user.click(screen.getByRole("button", { name: "Submit answers" }));
+    await screen.findByRole("alert");
+    expect(surveyCalls()).toHaveLength(1);
+  });
+
+  it("sends no second survey when submit is clicked again after sessionStorage throws", async () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("blocked", "SecurityError");
+    });
+    const user = await renderReady();
+    const submit = screen.getByRole("button", { name: "Submit answers" });
+    await user.click(submit);
+    await screen.findByRole("alert");
+    await user.click(submit);
+    expect(surveyCalls()).toHaveLength(1);
+  });
+
   it("does not navigate to /results when sessionStorage throws", async () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new DOMException("blocked", "SecurityError");
@@ -194,7 +216,7 @@ describe("SurveyForm", () => {
     });
     const user = await renderReady();
     await user.click(screen.getByRole("button", { name: "Submit answers" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("your browser blocked storage");
+    expect(await screen.findByRole("alert")).toHaveTextContent("your browser blocked site storage");
   });
 
   it("keeps submit busy after a 201 while /results loads", async () => {

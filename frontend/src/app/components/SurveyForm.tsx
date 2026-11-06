@@ -27,7 +27,8 @@ const CONTROL = `mt-1 block w-full rounded border border-gray-500 px-2 py-1 ${FO
 
 const FALLBACK_ERROR = "One of your answers could not be accepted. Please check them and try again.";
 const GENERIC_ERROR = "Something went wrong sending your answers. Please try again.";
-const STORAGE_ERROR = "Your answers were saved, but your browser blocked storage, so your results can't be shown here.";
+const STORAGE_ERROR =
+  "Your answers were saved, but your browser blocked site storage, so your results can't be shown. Allow storage for this site (or leave private browsing), then reload the page and take the survey again.";
 
 interface SelectFieldProps {
   field: EnumField;
@@ -162,7 +163,7 @@ export function SurveyForm() {
         sessionStorage.setItem(SURVEY_TOKEN_KEY, result.surveyToken);
       } catch {
         // Without the token /results could only say "not found", so stay here and say why.
-        setPending(false);
+        // Pending stays set: the survey row exists, so a second submit would create a duplicate.
         setFailure({ kind: "storage" });
         return;
       }
