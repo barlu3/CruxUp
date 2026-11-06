@@ -329,7 +329,7 @@ export function SurveyForm() {
         aria-disabled={pending}
         className={`mt-6 rounded bg-blue-800 px-4 py-2 font-medium text-white aria-disabled:cursor-wait aria-disabled:opacity-60 ${FOCUS}`}
       >
-        {pending ? "Sending…" : "Submit answers"}
+        {pending && failure?.kind !== "storage" ? "Sending…" : "Submit answers"}
       </button>
     </form>
   );

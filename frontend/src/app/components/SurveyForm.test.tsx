@@ -219,6 +219,16 @@ describe("SurveyForm", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("your browser blocked site storage");
   });
 
+  it("keeps submit disabled with its normal label after a storage failure", async () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("blocked", "SecurityError");
+    });
+    const user = await renderReady();
+    await user.click(screen.getByRole("button", { name: "Submit answers" }));
+    await screen.findByRole("alert");
+    expect(screen.getByRole("button", { name: "Submit answers" })).toHaveAttribute("aria-disabled", "true");
+  });
+
   it("keeps submit busy after a 201 while /results loads", async () => {
     const user = await renderReady();
     const submit = screen.getByRole("button", { name: "Submit answers" });

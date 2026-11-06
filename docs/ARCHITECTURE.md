@@ -600,7 +600,7 @@ scorer (§4.13). It has four endpoints; `POST /recommend` (W7-2) ranks one surve
 
 ### 4.10 Frontend shell and test harness — `frontend/`
 
-The minimum the Next.js App Router needs in order to build, plus the two test layers that later frontend work builds on (W6-0). The questionnaire built on it is described in §4.11 and the quadrant page in §4.12; the results page is still a placeholder (§7).
+The minimum the Next.js App Router needs in order to build, plus the two test layers that later frontend work builds on (W6-0). The questionnaire built on it is described in §4.11 and the quadrant page in §4.12; the results page is described in §4.14.
 
 Everything in this section lives in `frontend/`, a self-contained npm project. Paths below are relative to it, and every `npm` command runs there.
 
@@ -1133,7 +1133,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 ## 11. Testing architecture
 
 - **Runners:** `pytest` for the backend, run from the repository root: `python3 -m pytest backend/tests/ -q`. Vitest and Playwright for the frontend (§4.10), run from `frontend/`: `npm test` and `npm run test:e2e`.
-- **Frontend tests** (paths under `frontend/`): 448 Vitest tests in 19 files and 35 Playwright tests in 4 files.
+- **Frontend tests** (paths under `frontend/`): 449 Vitest tests in 19 files and 35 Playwright tests in 4 files.
   - **`src/app/page.test.tsx`** — 3 Vitest tests. The home page renders a level-1 heading `CruxUp`, a link whose `href` is `/survey`, and a link whose `href` is `/quadrant`. All use role-based queries.
   - **`src/app/survey/page.test.tsx`** — 1 test: the page's metadata title, and that it renders a single `<h1>`.
   - **`src/app/lib/payload.test.ts`** — 8 tests (the eighth checks that chosen shoes keep their order, which the error links rely on):
@@ -1152,7 +1152,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   - **`src/app/lib/api.test.ts`** — 25 tests: the catalogue loader accepts well-formed rows, rejects six malformed shapes (not an array, a non-string `id`, a missing `brand`, a `null` version, an unknown gender, a `null` row), and passes its abort signal to `fetch`. The quadrant loader requests `/api/quadrant`, accepts the inclusive bounds −1 and 1, rejects ten malformed shapes (among them out-of-range or string coordinates, an unknown `prior_source`, a string `is_anchor` and the API's `ON-AXIS`), rejects a non-2xx answer, and passes its abort signal.
   - **`src/app/lib/quadrant-scale.test.ts`**, **`format-axis-value.test.ts`** — 4 and 3 tests: the corners and centre of the plot, soft drawn above stiff; two decimals, a true minus sign, and no `−0.00`.
   - **`src/app/api/routes.test.ts`** — 48 tests, run in Node, of the relay:
-    - exactly GET on `/api/shoes` and `/api/quadrant` and POST on `/api/survey`;
+    - exactly GET on `/api/shoes` and `/api/quadrant` and POST on `/api/survey` and `/api/recommend`;
     - `callBackend` refuses `/docs`, `/openapi.json`, `/recommend/`, a trailing slash, a query string and a protocol-relative path without calling `fetch`;
     - non-JSON or missing content types get 415 without contacting the API, and `application/json; charset=utf-8` and `+json` types are forwarded;
     - the backend address is read on every call, with the default when unset;
@@ -1309,7 +1309,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   - The migration apply/reverse check is automated here; `SETUP.md` §3 remains the manual procedure for a local database.
 - **Scorer test files** (§4.13): `test_score.py` (75), `test_fit.py` (47), `test_style.py` (21), `test_confidence.py` (33), `test_scorer_config.py` (19) and `test_recommend_personas.py` (16). None needs a database.
 - **Stub test files:** `test_aggregate.py`, `test_calibration.py`.
-- **Total:** backend 2,017 passed with a seeded PostgreSQL 16.15, and 1,991 passed plus 26 skipped without one (measured 2026-11-06 on the W6-3 branch). Frontend: 448 Vitest tests and 35 Playwright tests (dev and `CI=1`).
+- **Total:** backend 2,017 passed with a seeded PostgreSQL 16.15, and 1,991 passed plus 26 skipped without one (measured 2026-11-06 on the W6-3 branch). Frontend: 449 Vitest tests and 35 Playwright tests (dev and `CI=1`).
 
 ---
 
@@ -1442,7 +1442,7 @@ cd frontend                                                      # every npm com
 npm ci                                                           # installs exactly what package-lock.json records
 npm run lint                                                     # no errors, no warnings
 npm run typecheck                                                # clean
-npm run test:coverage                                            # 448 passed in 19 files; coverage thresholds met
+npm run test:coverage                                            # 449 passed in 19 files; coverage thresholds met
 npm run build                                                    # static: /, /_not-found, /quadrant, /results, /survey; dynamic: /api/quadrant, /api/recommend, /api/shoes, /api/survey
 npm run test:e2e                                                 # 35 passed (local, next dev + mock API on :8100)
 CI=1 npm run test:e2e                                            # 35 passed (production build, next start) — run after npm run build
