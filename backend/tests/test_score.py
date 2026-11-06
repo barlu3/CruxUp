@@ -445,3 +445,14 @@ def test_fit_and_budget_only_total_is_renormalised_literal():
     # (0.45 * 1.0 + 0.15 * 0.5) / (0.45 + 0.15) = 0.525 / 0.6
     survey = {"toe_shape": "egyptian", "budget_cap_usd": 100}
     assert by_id(run(survey, [shoe(price=100)]), "s1")["total_score"] == 0.875
+
+
+def test_anchor_entry_without_shoe_id_is_counted_as_not_in_catalog():
+    survey = {"known_good_shoes": [{"brand": "Scarpa", "model": "Drago"}]}
+    assert "anchor_not_in_catalog:1" in run(survey, [shoe()]).warnings
+
+
+def test_anchor_entry_without_shoe_id_does_not_raise_alongside_a_valid_one():
+    survey = {"known_good_shoes": [{"brand": "x"}, {"shoe_id": "s1"}],
+              "known_bad_shoes": [{"model": "y"}]}
+    assert "anchor_not_in_catalog:1" in run(survey, [shoe()]).warnings

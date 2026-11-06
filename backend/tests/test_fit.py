@@ -248,3 +248,8 @@ def test_unknown_closure_raises_scoring_error():
 
 def test_fit_module_reexports_the_config_scoring_error():
     assert F.ScoringError is C.ScoringError
+
+
+def test_anchor_families_counts_an_entry_without_shoe_id_as_missing():
+    _, warnings = F.anchor_families([{"brand": "x"}, {"shoe_id": "n"}], {"n": NEUTRAL})
+    assert warnings == ["anchor_not_in_catalog:1"]
