@@ -1,6 +1,7 @@
 // Dependency-free stand-in for the FastAPI backend, used only by the e2e run.
-// GET /shoes serves the real-catalogue fixture; POST /survey records the last
-// body. A body containing "__e2e_422__" is answered with a 422.
+// GET /shoes and GET /quadrant serve real-catalogue fixtures (quadrant.json is
+// the seeded backend's GET /quadrant with shoes.json's ids); POST /survey
+// records the last body. A body containing "__e2e_422__" is answered with a 422.
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -9,6 +10,7 @@ import { fileURLToPath } from "node:url";
 const PORT = 8100;
 const here = dirname(fileURLToPath(import.meta.url));
 const shoes = readFileSync(join(here, "fixtures", "shoes.json"), "utf8");
+const quadrant = readFileSync(join(here, "fixtures", "quadrant.json"), "utf8");
 let lastSurvey = null;
 
 function send(res, status, body) {
@@ -19,6 +21,7 @@ function send(res, status, body) {
 createServer((req, res) => {
   const { pathname } = new URL(req.url ?? "/", `http://127.0.0.1:${PORT}`);
   if (req.method === "GET" && pathname === "/shoes") return send(res, 200, shoes);
+  if (req.method === "GET" && pathname === "/quadrant") return send(res, 200, quadrant);
   if (req.method === "GET" && pathname === "/__last-survey") return send(res, 200, lastSurvey);
   if (req.method === "POST" && pathname === "/survey") {
     const chunks = [];
