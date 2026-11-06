@@ -1,7 +1,7 @@
 // Browser client. Calls only this app's own route handlers; the browser never
 // talks to the FastAPI backend directly.
 
-import type { Shoe, SurveyPayload } from "./types";
+import type { QuadrantShoe, Shoe, SurveyPayload } from "./types";
 
 export type SubmitResult =
   | { kind: "created" }
@@ -9,6 +9,8 @@ export type SubmitResult =
   | { kind: "failed" };
 
 const GENDERS: readonly unknown[] = ["mens", "womens", "unisex"];
+const PRIOR_SOURCES: readonly unknown[] = ["corpus", "hand", "spec"];
+const QUADRANTS: readonly unknown[] = ["Q1", "Q2", "Q3", "Q4"];
 
 function isShoe(v: unknown): v is Shoe {
   if (typeof v !== "object" || v === null) return false;
@@ -28,6 +30,32 @@ export async function fetchShoes(signal?: AbortSignal): Promise<Shoe[]> {
   const body: unknown = await res.json();
   if (!Array.isArray(body)) throw new Error("catalogue response is not a list");
   if (!body.every(isShoe)) throw new Error("catalogue response has a malformed row");
+  return body;
+}
+
+/** The section-3 plane is [-1, 1] on both axes. */
+function isAxisValue(v: unknown): boolean {
+  return typeof v === "number" && v >= -1 && v <= 1;
+}
+
+function isQuadrantShoe(v: unknown): v is QuadrantShoe {
+  if (!isShoe(v)) return false;
+  const r = v as unknown as Record<string, unknown>;
+  return (
+    isAxisValue(r.x) &&
+    isAxisValue(r.y) &&
+    PRIOR_SOURCES.includes(r.prior_source) &&
+    typeof r.is_anchor === "boolean" &&
+    QUADRANTS.includes(r.quadrant)
+  );
+}
+
+export async function fetchQuadrant(signal?: AbortSignal): Promise<QuadrantShoe[]> {
+  const res = await fetch("/api/quadrant", { headers: { accept: "application/json" }, signal });
+  if (!res.ok) throw new Error(`quadrant request failed (${res.status})`);
+  const body: unknown = await res.json();
+  if (!Array.isArray(body)) throw new Error("quadrant response is not a list");
+  if (!body.every(isQuadrantShoe)) throw new Error("quadrant response has a malformed row");
   return body;
 }
 

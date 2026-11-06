@@ -1,5 +1,7 @@
 // Shared types mirroring the backend contract (backend/app/survey/schema.py,
-// anchors.py and the GET /shoes response).
+// anchors.py and the GET /shoes and GET /quadrant responses).
+// backend/tests/test_frontend_contract.py parses this file and fails if it
+// drifts from them.
 
 export type Gender = "mens" | "womens" | "unisex";
 
@@ -45,6 +47,26 @@ export interface SurveyPayload {
   budget_cap_usd?: number;
   known_good_shoes?: AnchorEntry[];
   known_bad_shoes?: AnchorEntry[];
+}
+
+export type PriorSource = "corpus" | "hand" | "spec";
+export type Quadrant = "Q1" | "Q2" | "Q3" | "Q4";
+
+/** One row of GET /quadrant: a shoe placed on the section-3 axes. */
+export interface QuadrantShoe {
+  id: string;
+  brand: string;
+  model: string;
+  version: string;
+  gender: Gender;
+  /** Comfort (-1) to performance (+1). */
+  x: number;
+  /** Stiff (-1) to soft (+1). */
+  y: number;
+  prior_source: PriorSource;
+  /** One of the five section-3 reference shoes. */
+  is_anchor: boolean;
+  quadrant: Quadrant;
 }
 
 export interface SurveyErrorBody {
