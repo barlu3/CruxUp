@@ -19,7 +19,8 @@ const MARK_RADIUS = 5;
 const ANCHOR_RADIUS = 7;
 // Transparent target so a point is easy to hit without enlarging the mark. The svg is fluid, so
 // size it for the narrowest case: 328px phone content width (360 - 2x16 gutters) gives
-// 40 * 328 / 480 = ~27px >= 24px. Overlap in dense clusters is fine; keyboard reaches every shoe.
+// 40 * 328 / 480 = ~27px >= 24px. Overlap in dense clusters is fine: the marks are repeated
+// above every hit area, and the keyboard reaches every shoe.
 const HIT_RADIUS = 20;
 const NEUTRAL_THRESHOLD = 0.05;
 const FOCUS_RING_RADIUS = 11;
@@ -89,6 +90,15 @@ export function QuadrantChart({ shoes }: { shoes: QuadrantShoe[] }) {
     pointRefs.current.get(ordered[next].id)?.focus();
   }
 
+  function handlePointerEnter(id: string) {
+    setHoveredId(id);
+    setIsTooltipDismissed(false);
+  }
+
+  function handlePointerLeave() {
+    setHoveredId(null);
+  }
+
   return (
     <figure className="mx-auto flex w-full max-w-xl flex-col gap-3">
       <div ref={wrapperRef} className="relative">
@@ -137,12 +147,9 @@ export function QuadrantChart({ shoes }: { shoes: QuadrantShoe[] }) {
                   setIsTooltipDismissed(false);
                 }}
                 onBlur={() => setFocusedId(null)}
-                onMouseEnter={() => {
-                  setHoveredId(shoe.id);
-                  setIsTooltipDismissed(false);
-                }}
-                onMouseLeave={() => setHoveredId(null)}
-                onPointerLeave={() => setHoveredId(null)}
+                onMouseEnter={() => handlePointerEnter(shoe.id)}
+                onMouseLeave={handlePointerLeave}
+                onPointerLeave={handlePointerLeave}
               >
                 <circle cx={cx} cy={cy} r={HIT_RADIUS} className="fill-transparent stroke-none" />
                 {focusedId === shoe.id && (
@@ -164,6 +171,23 @@ export function QuadrantChart({ shoes }: { shoes: QuadrantShoe[] }) {
               </g>
             );
           })}
+          {/* Every mark again, above all hit areas, so a later point's hit area cannot take the pointer from an earlier point's visible mark. */}
+          <g aria-hidden="true">
+            {ordered.map((shoe) => {
+              const { cx, cy } = toChartPoint(shoe.x, shoe.y);
+              return (
+                <g
+                  key={shoe.id}
+                  className={shoe.prior_source === "spec" ? "fill-background" : "fill-foreground"}
+                  onMouseEnter={() => handlePointerEnter(shoe.id)}
+                  onMouseLeave={handlePointerLeave}
+                  onPointerLeave={handlePointerLeave}
+                >
+                  <Mark shoe={shoe} cx={cx} cy={cy} r={shoe.is_anchor ? ANCHOR_RADIUS : MARK_RADIUS} />
+                </g>
+              );
+            })}
+          </g>
         </svg>
         <p id={instructionsId} className="sr-only">
           Use the arrow keys to move between shoes from most comfort-focused to most

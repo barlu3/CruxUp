@@ -33,13 +33,21 @@ test("Tab then ArrowRight shows a tooltip naming the second shoe by x-order", as
 
 test("hovering the Drago point shows its tooltip", async ({ page }) => {
   await openQuadrant(page);
-  await dragoMark(page).hover();
+  await hoverMark(page, /^Scarpa Drago/);
   await expect(tooltip(page)).toContainText("Scarpa Drago (unisex)");
+});
+
+// Elektra shares Defy's coordinates and comes later in x-order, so its hit area used to cover
+// Defy's mark. 7.5 units from the centre is on Defy's anchor ring, outside Elektra's smaller mark.
+test("hovering the visible edge of Defy's mark shows Defy's tooltip, not Elektra's", async ({ page }) => {
+  await openQuadrant(page);
+  await hoverMark(page, /^Evolv Defy/, -7.5);
+  await expect(tooltip(page)).toContainText("Evolv Defy (men's)");
 });
 
 test("Escape hides a shown tooltip", async ({ page }) => {
   await openQuadrant(page);
-  await dragoMark(page).hover();
+  await hoverMark(page, /^Scarpa Drago/);
   await expect(tooltip(page)).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(tooltip(page)).toBeHidden();
@@ -62,7 +70,7 @@ test("the browser only calls the app's own /api/quadrant", async ({ page }) => {
 
 test("WCAG 2 A/AA scan of the quadrant page with a tooltip shown", async ({ page }) => {
   await openQuadrant(page);
-  await dragoMark(page).hover();
+  await hoverMark(page, /^Scarpa Drago/);
   await expect(tooltip(page)).toBeVisible();
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
@@ -80,8 +88,12 @@ function tooltip(page: Page): Locator {
   return page.locator('[role="tooltip"]');
 }
 
-// The mark is the topmost circle, so hovering it passes Playwright's hit-target check; the
-// group's own box is skewed by its text label.
-function dragoMark(page: Page): Locator {
-  return page.getByRole("img", { name: /^Scarpa Drago/ }).locator("circle").last();
+// Moves the pointer to a point's mark, offset left by dx viewBox units. The visible marks sit in an
+// aria-hidden top layer, so the point is found by its hit circle (radius 20 units), whose box is
+// centred on the mark; the group's own box is skewed by its text label.
+async function hoverMark(page: Page, name: RegExp, dx = 0) {
+  const box = await page.getByRole("img", { name }).locator("circle").first().boundingBox();
+  if (!box) throw new Error(`no hit circle for ${name}`);
+  const scale = box.width / 40;
+  await page.mouse.move(box.x + box.width / 2 + dx * scale, box.y + box.height / 2);
 }
