@@ -1,10 +1,10 @@
 # Climbing Shoe Recommender — Project Plan & Agent Task Spec
 
-**Version:** 3.3
+**Version:** 3.4
 **Status:** Active. Supersedes v2.0 (2026-05-25).
 **Last updated:** 2026-11-05
-**Change basis:** v3.0 was the feasibility review of all 22 backlog tasks (§2.1). v3.1 adds D11 and D12, records what has actually been built (§2.0), and folds in two findings measured from the first live collection run — the mention-attribution problem (W1-3) and the $N_{\min}$ reachability problem (W2-3). **v3.2** closes a structural gap found while sequencing W6-1: the HTTP layer (**W7**) and the frontend build foundation (**W6-0**) were assumed by the scaffold but carried no task ID, so the plan showed W6-1 as startable when two prerequisites did not exist. **v3.3** records W6-1 as done and closes the §13 $\mathbf{q}^*$ wiring gap (option a, implemented in `store.build_survey_row`). It also decides the W6-3 scorer gap: a minimal coded scorer and W7-2 move into the thin slice, and the 30 calibration shoes get MSRP first. See §15.
-**Progress:** 9 of 37 tasks complete (4 deferred: W0-3, W0-1b, W2-5, W5-2). W1-0b is **not** complete: its collection path failed the YouTube terms review (§10.2). See §2.0.
+**Change basis:** v3.0 was the feasibility review of all 22 backlog tasks (§2.1). v3.1 adds D11 and D12, records what has actually been built (§2.0), and folds in two findings measured from the first live collection run — the mention-attribution problem (W1-3) and the $N_{\min}$ reachability problem (W2-3). **v3.2** closes a structural gap found while sequencing W6-1: the HTTP layer (**W7**) and the frontend build foundation (**W6-0**) were assumed by the scaffold but carried no task ID, so the plan showed W6-1 as startable when two prerequisites did not exist. **v3.3** records W6-1 as done and closes the §13 $\mathbf{q}^*$ wiring gap (option a, implemented in `store.build_survey_row`). It also decides the W6-3 scorer gap: a minimal coded scorer and W7-2 move into the thin slice, and the 30 calibration shoes get MSRP first. **v3.4** records that MSRP sourcing is partial: 23 of 30 calibration shoes are priced, 7 are null, and W5-1d stays open. See §15.
+**Progress:** 9 of 37 tasks complete (4 deferred: W0-3, W0-1b, W2-5, W5-2). W1-0b is **not** complete: its collection path failed the YouTube terms review (§10.2). **W5-1d is partial** (23 of 30 calibration shoes priced, 2026-11-05) and is not counted. See §2.0.
 
 ---
 
@@ -74,6 +74,7 @@ Audited against files on disk and verified runs, not against memory.
 | W7-1 API: `POST /survey` + `GET /shoes` (2026-09-25) | `main.py`, `api/deps.py`, `api/routes/{survey,shoes}.py`; 57 tests. `POST /survey` adds no validation of its own: its 422 list equals `build_survey_row()`'s, and a test pins that FastAPI validates nothing on the route. A valid submission returns only `survey_token`. `GET /shoes` returns `version`/`gender`, and every item round-trips to its own id. Reviewed (python, 2 rounds; security). **$\mathbf{q}^*$ wired by W6-1** (2026-11-05) — see §13. |
 | W6-0 frontend foundation (2026-10-01) | `layout.tsx`, `page.tsx`, a committed `package-lock.json`, Vitest + React Testing Library, Playwright, and a CI `frontend` job. `npm run build` prerenders all four routes; 2 Vitest and 2 Playwright tests pass, the latter against both `next dev` and the production build; lint and type-check are clean. `next` was raised 16.2.4 → 16.3.8 to clear critical advisories (`npm audit`: 0). Reviewed (typescript). |
 | W6-1 questionnaire (2026-11-05) | `survey/page.tsx` and `SurveyForm` (fit, preference, budget and anchor inputs); `AnchorPicker` over `GET /shoes`, disambiguating version and gender; `results/page.tsx` placeholder. q* is derived in `store.build_survey_row()` from a raw `goal`; caller-supplied targets are refused. Next.js route handlers `/api/survey` and `/api/shoes` proxy to FastAPI (allow-listed paths, 32 KB cap, masked errors, `CRUXUP_API_URL`); typed client `lib/api.ts`, payload converter, design tokens in `globals.css`. Tests: 190 Vitest, 8 Playwright against a stub FastAPI, 14 pytest contract tests; backend 1,639 passed and 15 DB-backed skipped (no Postgres at development time, §13). Reviewed (python, typescript, react, security). |
+| W5-1d (part) MSRP for the 30 calibration shoes (2026-11-05) | **Partial, not counted in the 9.** `shoes.yaml`: 23 of 30 priced (19 from the brand's US site, 4 from a list price at least two retailers agree on); 7 null (Anasazi Pro, Mythos, Maestro Mid, Astroman, Katana Velcro, Elektra, Moccasym). `validate.py` warns 7/30; `validate.py --require-msrp` fails by design until those seven are resolved. `test_priors.py` pins `msrp_usd` to NUMERIC(7,2). Spot-checks outstanding (§13). |
 
 **Built but not on the backlog** — support the above, worth naming so they are not re-scoped later:
 `validate.py` (catalogue invariants + the `--require-msrp` budget-gate guard), `config.py` (`.env` loading), `SETUP.md` (local setup, verified end to end), 54 tests.
@@ -86,7 +87,7 @@ Audited against files on disk and verified runs, not against memory.
 
 **Not started:** everything else. The thin slice (D7) now has its data layer, survey capture, the $\mathbf{q}^*$ target function wired into capture, an HTTP surface for capture and the catalogue, and a questionnaire UI with a browser-to-API path, plus a results placeholder. It has no scorer and no ranked results. `api/routes/recommend.py`, `recommend/`, `nlp/` and `eval/` are still stubs.
 
-**Nearest unblocks (refreshed 2026-11-05):** W6-1 is done, so the thin slice's next steps follow the user-approved sequence: **MSRP for the 30 calibration shoes** (the first part of W5-1d, because 0 of 30 carry MSRP today) → **W6-2** static quadrant → a **minimal coded scorer and W7-2 `POST /recommend`** (pulled into the slice, §13 option a, decided 2026-11-05) → **W6-3** results. W1-0a remains one hour of paperwork gating a 2–4 week queue. The rest of W5-1 (the catalogue expansion and the remaining MSRP) gates the §7.6 budget gate.
+**Nearest unblocks (refreshed 2026-11-05):** W6-1 is done, so the thin slice's next steps follow the user-approved sequence: **MSRP for the 30 calibration shoes** (W5-1d, part: 23 of 30 sourced 2026-11-05; the 7 nulls and the §13 spot-checks stay open) → **next: W6-2** static quadrant → a **minimal coded scorer and W7-2 `POST /recommend`** (pulled into the slice, §13 option a, decided 2026-11-05) → **W6-3** results. W1-0a remains one hour of paperwork gating a 2–4 week queue. The rest of W5-1 (the catalogue expansion and the remaining MSRP) gates the §7.6 budget gate.
 
 ### 2.1 Review disposition (2026-09-07)
 
@@ -618,7 +619,7 @@ The collector must therefore be written source-agnostic from the first commit �
 | ~~W5-1a~~ | ~~Hand-place **30** shoes (calibration set)~~ | W0-1a | 1w | **DONE.** Five §3 anchors included. This set exists to fit and validate `priors.py`, not to be the catalog. |
 | ~~W5-1b~~ | ~~Fit spec→prior model (`priors.py`)~~ | W5-1a | 2d | **DONE.** LOOCV MAE x 0.139 / y 0.113, 87% quadrant agreement. Refit with `priors.py --refit`. |
 | W5-1c | Expand catalog to **~100** shoes | W5-1b | 1–2w | **D12.** Spec lookup only — `derive_prior()` supplies the placement, so no per-shoe judgement. Mark `prior_source: spec`. |
-| W5-1d | Source MSRP for all catalog shoes | W5-1c | 1w | Now the real budget item: scales linearly with catalog size. `validate.py --require-msrp` blocks the §7.6 budget gate until done. **Sourcing order decided 2026-11-05:** the 30 calibration shoes first, ahead of the rest of the slice, because 0 of 30 carry MSRP today. |
+| W5-1d | Source MSRP for all catalog shoes | W5-1c | 1w | **PARTIAL 2026-11-05: 23/30 calibration shoes priced.** 19 from the brand's US site; 4 (Testarossa, Altura, Aragon, Hiangle) from a list price at least two retailers agree on. 7 null, each with its reason in a `# msrp:` comment in `shoes.yaml` (§13). The task stays open: it covers the ~100-shoe catalogue (D12), and only the 30 calibration shoes are sourced. Now the real budget item: scales linearly with catalog size. `validate.py --require-msrp` still fails on the 7 nulls and blocks the §7.6 budget gate. **Sourcing order decided 2026-11-05:** the 30 calibration shoes first, ahead of the rest of the slice, because 0 of 30 carry MSRP today. |
 | W5-2 | Lifecycle handling (discontinued/revised/version) | W5-1c | — | **Deferred.** At 30 shoes a discontinued shoe is a manual edit. Revisit past ~50. |
 
 ### W6 — Frontend (moved earlier)
@@ -661,7 +662,7 @@ gantt
   API survey + shoes (W7-1)        :done, p1b2, after p1b, 4d
   Frontend foundation (W6-0)       :done, p1b3, 2026-10-01, 1d
   Questionnaire UI (W6-1)          :done, p1c, after p1b2 p1b3, 10d
-  MSRP for 30 shoes (W5-1d, part)  :p1m, after p1c, 2d
+  MSRP for 30 shoes (W5-1d, part)  :done, p1m, after p1c, 2d
   Static quadrant (W6-2)           :p1d, after p1m, 5d
   Minimal scorer + W7-2 (POST /recommend) :p1s, after p1d, 4d
   Results + confidence (W6-3)      :p1e, after p1s, 6d
@@ -716,6 +717,13 @@ Durations assume a solo builder. The v2 note "estimates for a small team" no lon
   - **Update 2026-09-25:** W7-1 shipped without this. Its request limited `POST /survey` to wrapping `build_survey_row()` / `insert_survey()` with no validation of its own, and option (a) would add a conversion step, plus `target_quadrant()`'s own checks, to the endpoint. The decision now gates **W6-1**, whose questionnaire must know whether to send a raw answer or `goal_x_target` / `goal_y_target`.
   - **RESOLVED 2026-11-05 — option (a).** The derivation lives in `store.build_survey_row()`, not in the route, so the W7-1 parity test that pins `POST /survey`'s 422 list to `build_survey_row()`'s still holds and the route stays validation-free. The client sends the raw `goal` in [-1, 1] and never a target: a caller-supplied `goal_x_target` / `goal_y_target` is refused, even as null. `goal` is removed before `schema.validate()`, so it is never persisted.
   - **Trade-off, accepted:** only the derived targets are stored, not the raw `goal`. A stored target cannot be recomputed if the mapping constants in `preferences.py` change. Keeping the answer would need the column in option (b), a future migration.
+- **MSRP for the 30 calibration shoes: open spot-checks and the null-price rule (W5-1d, recorded 2026-11-05).** 23 of 30 are priced; 7 are null (Anasazi Pro, Mythos, Maestro Mid, Astroman, Katana Velcro, Elektra, Moccasym). `shoes.yaml` carries the source and confidence of each value in a `# msrp:` comment. Human spot-checks still outstanding:
+  - **Katana Velcro identity.** The brand site lists two velcro Katanas, at 209 and 179. The row stays null until one is confirmed.
+  - **Moccasym identity.** The original is replaced by NIAD Moccasym (125); it is unclear which product the row means.
+  - **Anasazi Pro and Hiangle availability on adidas.com/us.** Confirm both are still sold there. adidas.com/us was not reachable when the rows were sourced. Anasazi Pro is null because the director rejected gear-database and resale sources; Hiangle is a medium-confidence retailer price.
+  - **Testarossa, 199 vs 219.** The sources disagree; the row records 219, the medium-confidence value.
+  - **Defy gender.** The row is `mens`, but Evolv now sells only a unisex Defy, at 119. The price is applied; the gender is unchanged.
+  - **Null-price rule (requirement for W7-2, shown by W6-3).** A shoe with `msrp_usd` null is shown as "price unknown". It is never silently treated as within budget. The §7.6 price gate `1[price ≤ cap]` cannot evaluate a null, so the scorer needs an explicit branch for it, and the flag must reach the response so the results page can show it.
 - **W6-1 known gaps (deferred, recorded 2026-11-05).** Carried into `docs/ARCHITECTURE.md` §12.
   - No rate limit on the unauthenticated `POST /api/survey`.
   - No request-body read timeout in the proxy, so a slow client can hold a connection open (slowloris). The 32 KB cap bounds size, not time.
@@ -742,6 +750,13 @@ Durations assume a solo builder. The v2 note "estimates for a small team" no lon
 ---
 
 ## 15. Changelog
+
+**v3.4 (2026-11-05)** — MSRP sourced for the 30 calibration shoes. W5-1d is partial and stays open. The progress count is unchanged at 9 of 37.
+- **W5-1d partial:** 23 of 30 calibration shoes priced. 19 are high-confidence (brand US site); 4 are medium (Testarossa, Altura, Aragon, Hiangle, from list prices at least two retailers agree on). 7 are null (Anasazi Pro, Mythos, Maestro Mid, Astroman, Katana Velcro, Elektra, Moccasym), each with its reason in `shoes.yaml`. `validate.py` warns on 7/30; `--require-msrp` fails by design until the nulls are resolved.
+- **Test:** a new test pins `msrp_usd` to NUMERIC(7,2). Backend suite 1686 passed, 15 skipped without a database.
+- **§2.0:** a progress table row for W5-1d, marked partial and not counted. The next unblock is W6-2.
+- **§12 Gantt:** the MSRP task is marked `:done`.
+- **§13:** spot-check list for the MSRP sourcing, and the null-price rule as a requirement for W7-2.
 
 **v3.3 (2026-11-05)** — W6-1 done; the q* wiring gap closed; the thin slice's next steps re-sequenced. Two open §13 items resolved (q* and the W6-3 scorer), three conventions recorded (proxy error envelope, US street size, npm), and the thin-slice Gantt and dependency graph re-baselined to the approved sequence. No §2 decision was changed.
 - Struck **W6-1** through: done and reviewed 2026-11-05 (python, typescript, react, security). Shipped: the questionnaire, the `AnchorPicker` over `GET /shoes`, the Next.js route handlers that proxy `/survey` and `/shoes` to FastAPI, the typed client, the payload converter and design tokens. Results is a placeholder until W6-3.
