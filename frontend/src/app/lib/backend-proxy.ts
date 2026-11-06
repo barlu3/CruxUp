@@ -10,18 +10,21 @@ const SECURITY_HEADERS = {
   "cache-control": "no-store",
 } as const;
 
-type BackendPath = "/survey" | "/shoes" | "/quadrant";
+type BackendPath = "/survey" | "/shoes" | "/quadrant" | "/recommend";
 
 export function createErrorResponse(status: number, message: string): Response {
   return Response.json({ errors: [message] }, { status, headers: SECURITY_HEADERS });
 }
 
-// No retry: POST /survey is not idempotent. Statuses outside `passthroughStatuses`
-// become 502 so the backend cannot surface redirects, auth or rate-limit responses.
+// No retry: the POST endpoints (/survey, /recommend) are not safe to repeat blindly.
+// Statuses outside `passthroughStatuses` become 502 so the backend cannot surface
+// redirects, auth or rate-limit responses. A status listed in `fixedMessages` keeps its
+// code but its body is replaced, so a route can refuse to echo backend text.
 export async function forwardToBackend(
   path: BackendPath,
   init: RequestInit,
   passthroughStatuses: readonly number[],
+  fixedMessages: Readonly<Record<number, string>> = {},
 ): Promise<Response> {
   const baseUrl = process.env.CRUXUP_API_URL || DEFAULT_API_URL;
 
@@ -41,6 +44,12 @@ export async function forwardToBackend(
       return createErrorResponse(504, "The service took too long to respond.");
     }
     return createErrorResponse(503, "The service is temporarily unavailable.");
+  }
+
+  const fixedMessage = fixedMessages[upstream.status];
+  if (fixedMessage !== undefined && passthroughStatuses.includes(upstream.status)) {
+    await upstream.body?.cancel();
+    return createErrorResponse(upstream.status, fixedMessage);
   }
 
   if (passthroughStatuses.includes(upstream.status)) {
