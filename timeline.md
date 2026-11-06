@@ -1,10 +1,10 @@
 # Climbing Shoe Recommender — Project Plan & Agent Task Spec
 
-**Version:** 3.4
+**Version:** 3.5
 **Status:** Active. Supersedes v2.0 (2026-05-25).
-**Last updated:** 2026-11-05
-**Change basis:** v3.0 was the feasibility review of all 22 backlog tasks (§2.1). v3.1 adds D11 and D12, records what has actually been built (§2.0), and folds in two findings measured from the first live collection run — the mention-attribution problem (W1-3) and the $N_{\min}$ reachability problem (W2-3). **v3.2** closes a structural gap found while sequencing W6-1: the HTTP layer (**W7**) and the frontend build foundation (**W6-0**) were assumed by the scaffold but carried no task ID, so the plan showed W6-1 as startable when two prerequisites did not exist. **v3.4** records the first part of W4'-4a (the server derives $\mathbf{q}^*$) and MSRP for 23 of the 30 calibration shoes. See §15.
-**Progress:** 9 of 41 tasks complete (2 deferred). **v3.3** resolves the two §13 decisions that blocked the results page: a v0 scorer and $\mathbf{q}^*$ wiring, adding four tasks. See §15. W1-0b is **not** complete: its collection path failed the YouTube terms review (§10.2). See §2.0. **W4'-4a and W5-1d are partial** (2026-11-05) and are not counted.
+**Last updated:** 2026-11-06
+**Change basis:** v3.0 was the feasibility review of all 22 backlog tasks (§2.1). v3.1 adds D11 and D12, records what has actually been built (§2.0), and folds in two findings measured from the first live collection run — the mention-attribution problem (W1-3) and the $N_{\min}$ reachability problem (W2-3). **v3.2** closes a structural gap found while sequencing W6-1: the HTTP layer (**W7**) and the frontend build foundation (**W6-0**) were assumed by the scaffold but carried no task ID, so the plan showed W6-1 as startable when two prerequisites did not exist. **v3.4** records the first part of W4'-4a (the server derives $\mathbf{q}^*$) and MSRP for 23 of the 30 calibration shoes. **v3.5** records W6-2 as done: `GET /quadrant`, `/api/quadrant` and the `/quadrant` page with its interactive chart and table, plus the relay's path allow-list and error masking. See §15.
+**Progress:** 10 of 41 tasks complete (2 deferred). **v3.3** resolves the two §13 decisions that blocked the results page: a v0 scorer and $\mathbf{q}^*$ wiring, adding four tasks. See §15. W1-0b is **not** complete: its collection path failed the YouTube terms review (§10.2). See §2.0. **W4'-4a and W5-1d are partial** (2026-11-05) and are not counted.
 
 ---
 
@@ -57,11 +57,11 @@ The original availability-based recommendation angle was **dropped**. The engine
 | **D10** | **Survey fit validation is a directional check (n≈8–12), not a statistical study.** | A real claim needs 30–50 participants and weeks of recruitment. Solo and pre-launch, that is not available. | W4'-3 rescoped. Real validation waits for §9.3 post-launch data — which is why the feedback columns land in W0-1a now. |
 | **D11** | **Reddit is not load-bearing. Apply for free non-commercial access now; build the corpus on YouTube and forums.** | Self-service app registration is closed — every OAuth client needs manual approval, reported at 2-4 weeks with a real chance of silent rejection. Cost turned out not to be the obstacle (metered access is about $3.60 at this volume); *access latency and uncertainty* are. | Resolves W0-0. Splits W1-0 into 0a (apply), 0b (YouTube/forums collector), 0c (Reddit adapter on approval). Forces a source-agnostic collector interface. See §10.0. **REOPENED 2026-09-16 — needs user sign-off.** The YouTube half of this decision failed the terms review (§10.2): the Developer Policies appear to prohibit the §7.4 design outright. The Reddit half stands. |
 
-### 2.0 Progress (audited 2026-09-14; refreshed 2026-10-01)
+### 2.0 Progress (audited 2026-09-14; refreshed 2026-11-06)
 
 Audited against files on disk and verified runs, not against memory.
 
-**Complete — 9 of 41 backlog tasks** (41 since v3.3 added W3-1a, W4'-4a, W4'-4b and W6-4; 37 since v3.2 added W6-0, W7-1, W7-2):
+**Complete — 10 of 41 backlog tasks** (41 since v3.3 added W3-1a, W4'-4a, W4'-4b and W6-4; 37 since v3.2 added W6-0, W7-1, W7-2):
 
 | Task | Evidence |
 |---|---|
@@ -74,8 +74,9 @@ Audited against files on disk and verified runs, not against memory.
 | W7-1 API: `POST /survey` + `GET /shoes` (2026-09-25) | `main.py`, `api/deps.py`, `api/routes/{survey,shoes}.py`; 57 tests. `POST /survey` adds no validation of its own: its 422 list equals `build_survey_row()`'s, and a test pins that FastAPI validates nothing on the route. A valid submission returns only `survey_token`. `GET /shoes` returns `version`/`gender`, and every item round-trips to its own id. Reviewed (python, 2 rounds; security). **$\mathbf{q}^*$ wired by W4'-4a** (2026-11-05) — see §13. |
 | W6-1 questionnaire UI (2026-10-01) | `/survey`: fit, preference and budget inputs, and two catalogue-backed anchor pickers. Two Next.js route handlers relay to the API server-side. Verified against the real API and Postgres by keyboard alone: Instinct VSR and the base Solution resolve to their own `shoe_id`; an anchors-only answer is stored with every fit field NULL; the browser never calls the API. 127 Vitest + 13 Playwright tests, with axe WCAG 2 A/AA scans in six states. Reviewed (typescript; then react, a11y — WCAG 2.2 AA — and security, whose 2 HIGH a11y findings are fixed). **No goal input** — see §13. |
 | W6-0 frontend foundation (2026-10-01) | `layout.tsx`, `page.tsx`, a committed `package-lock.json`, Vitest + React Testing Library, Playwright, and a CI `frontend` job. `npm run build` prerenders all four routes; 2 Vitest and 2 Playwright tests pass, the latter against both `next dev` and the production build; lint and type-check are clean. `next` was raised 16.2.4 → 16.3.8 to clear critical advisories (`npm audit`: 0). Reviewed (typescript). |
-| W4'-4a (part) server derives $\mathbf{q}^*$ (2026-11-05) | **Partial, not counted in the 9.** `store._prepare_submission()`, called by `build_survey_row()`, derives `goal_x_target`/`goal_y_target` with `target_quadrant(discipline, terrain, level, goal)`. A caller-supplied target is refused, even as null; the raw `goal` is never persisted. No DDL, and `POST /survey` code is unchanged, so the W7-1 parity tests hold. Not yet done from the task's spec: `schema.DERIVED_FIELDS`, `preferences.MAPPING_VERSION` with its fingerprint test, and the per-discipline sweep test. No client sends `goal` until W6-4. Reviewed (python, 2 rounds; security). |
-| W5-1d (part) MSRP for the 30 calibration shoes (2026-11-05) | **Partial, not counted in the 9.** `shoes.yaml`: 23 of 30 priced (19 from the brand's US site, 4 from a list price at least two retailers agree on); 7 null (Anasazi Pro, Mythos, Maestro Mid, Astroman, Katana Velcro, Elektra, Moccasym). `validate.py` warns 7/30; `validate.py --require-msrp` fails by design until those seven are resolved. `test_priors.py` pins `msrp_usd` to NUMERIC(7,2). Spot-checks outstanding (§13). |
+| W6-2 interactive quadrant (2026-11-06) | `GET /quadrant` (`routes/quadrant.py`) serves every shoe with a prior; `is_anchor` comes from `validate.ANCHORS` (no DDL) and `quadrant` from `priors.quadrant()`, so an on-axis prior is a masked 500 by design. `/api/quadrant` goes through the W6-1 relay (`api/_lib/backend.ts`), which now refuses any path but `/survey`, `/shoes` and `/quadrant` and turns every unexpected upstream status into a fixed 502 `{"errors": [...]}` (§13). `fetchQuadrant()` guards every row; `test_frontend_contract.py` pins `lib/types.ts` (including the new `QuadrantShoe`) to `schema.py`, `anchors.py`, `ShoeOut` and `QuadrantShoeOut`. `/quadrant`: a hand-built SVG chart on the §3 axes (soft up, provenance by shape and fill, the five anchors labelled, roving tabindex, ≥24 px hit areas, a tooltip) and a table alternative, linked from home. Tests: 251 Vitest, 22 Playwright (9 for the quadrant, incl. an axe scan) in dev and under `CI=1`, 19 contract tests; backend 1,731 passed with a seeded database, 1,713 passed and 18 skipped without one. `next build`: `/quadrant` static, `/api/quadrant` dynamic. |
+| W4'-4a (part) server derives $\mathbf{q}^*$ (2026-11-05) | **Partial, not counted in the 10.** `store._prepare_submission()`, called by `build_survey_row()`, derives `goal_x_target`/`goal_y_target` with `target_quadrant(discipline, terrain, level, goal)`. A caller-supplied target is refused, even as null; the raw `goal` is never persisted. No DDL, and `POST /survey` code is unchanged, so the W7-1 parity tests hold. Not yet done from the task's spec: `schema.DERIVED_FIELDS`, `preferences.MAPPING_VERSION` with its fingerprint test, and the per-discipline sweep test. No client sends `goal` until W6-4. Reviewed (python, 2 rounds; security). |
+| W5-1d (part) MSRP for the 30 calibration shoes (2026-11-05) | **Partial, not counted in the 10.** `shoes.yaml`: 23 of 30 priced (19 from the brand's US site, 4 from a list price at least two retailers agree on); 7 null (Anasazi Pro, Mythos, Maestro Mid, Astroman, Katana Velcro, Elektra, Moccasym). `validate.py` warns 7/30; `validate.py --require-msrp` fails by design until those seven are resolved. `test_priors.py` pins `msrp_usd` to NUMERIC(7,2). Spot-checks outstanding (§13). |
 
 **Built but not on the backlog** — support the above, worth naming so they are not re-scoped later:
 `validate.py` (catalogue invariants + the `--require-msrp` budget-gate guard), `config.py` (`.env` loading), `SETUP.md` (local setup, verified end to end), 54 tests.
@@ -86,11 +87,11 @@ Audited against files on disk and verified runs, not against memory.
 1. **W1-3 needs redesigning.** Only 18% of collected comments name a shoe; 44% say "these/them/it". Alias matching would capture under a fifth of the corpus. Attribute by video subject first.
 2. **$N_{\min}=25$ may be unreachable.** 0/30 shoes clear it at 379 documents; top 5 hold 64% of mentions. The power law is steeper than §4 assumed. Query generation is currently anchor-biased, which partly explains it — per-shoe queries are the first fix.
 
-**Not started:** everything else. The thin slice (D7) now has its data layer, survey capture, the $\mathbf{q}^*$ target function, an HTTP surface for capture and the catalog, and the questionnaire (W6-1). It has no scorer and no results page. `api/routes/recommend.py`, `recommend/`, `nlp/` and `eval/` are still stubs.
+**Not started:** everything else. The thin slice (D7) now has its data layer, survey capture, the $\mathbf{q}^*$ target function, an HTTP surface for capture, the catalog and the quadrant, the questionnaire (W6-1) and the interactive quadrant (W6-2). It has no scorer and no results page. `api/routes/recommend.py`, `recommend/`, `nlp/` and `eval/` are still stubs.
 
-**Nearest unblocks (refreshed 2026-11-05, v3.4):** both §13 decisions are made. The path to a shippable slice is **W4'-4a → W3-1a → W7-2 → W6-3**:
+**Nearest unblocks (refreshed 2026-11-06, v3.5):** both §13 decisions are made. The path to a shippable slice is **W4'-4a → W3-1a → W7-2 → W6-3**:
 - **W4'-4a** is partly done: the server derives $\mathbf{q}^*$; `DERIVED_FIELDS`, `MAPPING_VERSION` and the sweep test remain. **W3-1** (spreadsheet scoring plus the climber check) can start now. W3-1's climber verdict is the go/no-go gate for W3-1a.
-- **W6-2** (quadrant) can start now and runs in parallel.
+- **W6-2** (quadrant) is done (2026-11-06); W6-3 can embed its chart.
 - **W4'-4b** (the `goal` column migration) and **W6-4** (the goal question) follow W4'-4a, off the critical path.
 
 Until W6-4 lands, the questionnaire collects discipline, terrain and level but not the comfort-vs-performance goal; `target_quadrant()` accepts that. W1-0a remains one hour of paperwork gating a 2–4 week queue. W5-1c/W5-1d are mechanical and gate the §7.6 budget gate; W5-1d has started with the 30 calibration shoes (23 priced, 2026-11-05), and its 7 nulls and the §13 spot-checks stay open.
@@ -642,7 +643,7 @@ The collector must therefore be written source-agnostic from the first commit �
 |---|---|---|---|---|
 | ~~W6-0~~ | ~~Frontend foundation: install deps, root layout, test harness~~ | — | 2d | **DONE 2026-10-01, reviewed (typescript).** Root layout and home page; npm lockfile committed; Vitest + React Testing Library (`src/**/*.test.tsx`) and Playwright (`e2e/`, Chromium, port 3100); CI `frontend` job. `next` pinned at 16.3.8 — the scaffolded 16.2.4 carried critical advisories. W6-1 inherits both test layers. The app was then moved from the repository root into `frontend/` (same day). |
 | ~~W6-1~~ | ~~Questionnaire UI~~ | W4'-2, **W7-1**, **W6-0** | 1–2w | **DONE 2026-10-01, reviewed (typescript).** `frontend/src/app/survey`, two route handlers (`/api/shoes`, `/api/survey`) relaying server-side, and an accessible catalogue combobox. All three acceptance criteria were verified against the real API and Postgres. The goal input is deferred to the §13 decision. Original scope: **In the thin slice.** Anchor picker needs catalog autocomplete, not free text — so it depends on `GET /shoes` (W7-1), which must expose `version`/`gender` or the UI recreates the ambiguity W4'-1 rejects server-side. |
-| W6-2 | Interactive quadrant | W5-1a | 1w static + 1w interactive | **Moved from second-to-last into the thin slice.** Hand-placed shoes test the product hypothesis with no corpus. |
+| ~~W6-2~~ | ~~Interactive quadrant~~ | W5-1a | 1w static + 1w interactive | **DONE 2026-11-06.** `GET /quadrant`, `/api/quadrant` through the W6-1 relay (now with a path allow-list and error masking), the SVG `QuadrantChart` and `QuadrantTable`, and the `/quadrant` page (`docs/ARCHITECTURE.md` §4.12). The chart's user-target and highlight hooks are left to W6-3. Original scope: **Moved from second-to-last into the thin slice.** Hand-placed shoes test the product hypothesis with no corpus. |
 | W6-3 | Results + confidence display | W6-2, W7-2 | 1w | **v3.3:**<br>• Owns the token handoff. `/api/survey` strips `survey_token` from the 201 body and sets an **HttpOnly `__Host-` cookie** (`Secure; SameSite=Strict`).<br>• Adds a third route handler, `/api/recommend`, which reads that cookie. The results page calls it from the client, never from a server render, because prefetching could write rows the user never saw.<br>• The `Origin`/`Sec-Fetch-Site` check ships now, because the cookie authorises requests.<br>• Until W3-4, a page-level notice says placements are hand-placed and fit and price are not assessed; the page copy says "style match", not "fit".<br>• Original notes: low-confidence results visibly distinct; gated-out shoes never shown. |
 | W6-4 | Questionnaire goal question (comfort ↔ performance) | W4'-4b | 1–2d | **v3.3.** An optional 5-step radio group (-1, -0.5, 0, 0.5, 1), sent as `goal`. Skipping it omits the key. The form never sends `goal_x_target`/`goal_y_target`; the existing test that pins this stays. Reviewed by typescript-reviewer plus an accessibility check. |
 
@@ -684,7 +685,7 @@ gantt
   Frontend foundation (W6-0)       :done, p1b3, 2026-10-01, 1d
   Questionnaire UI (W6-1)          :done, p1c, 2026-10-01, 1d
   MSRP for 30 shoes (W5-1d, part)  :done, p1m, 2026-11-05, 2d
-  Static quadrant (W6-2)           :p1d, after p1c, 5d
+  Interactive quadrant (W6-2)      :done, p1d, 2026-11-06, 1d
   Results + confidence (W6-3)      :p1e, after p1d p1d2, 6d
   SLICE SHIPS                      :milestone, m1, after p1e, 0d
 
@@ -755,6 +756,14 @@ Durations assume a solo builder. The v2 note "estimates for a small team" no lon
   - **Cookie lifetime.** It should cover the §9.4 follow-up window. To be decided in W6-3.
   - **G-centroid fallback declined.** A survey without discipline gets `no_style_target`; there is no invented target.
   - **Recommendation rows do not record the placement used.** If catalogue placements change (D12, NLP), old style scores cannot be re-derived. Low risk until placements move.
+- **Proxy errors reuse the `{"errors": [...]}` envelope with fixed text (decided 2026-11-05).** The Next.js relay (`api/_lib/backend.ts`) passes an upstream body through only for the statuses its route expects (201 and 422 for `/survey`, 200 for `/shoes` and `/quadrant`). Every other status, and any failed upstream call, becomes a 502 with a fixed message in the backend's 422 envelope, so the UI handles one error shape and no API error text reaches the browser. This is a deliberate exception to error-handling.md's `{error: {code, message}}` shape. Implemented in W6-2 (2026-11-06), which also gave the relay its path allow-list.
+- **`is_anchor` is derived from `validate.ANCHORS` (decided 2026-11-06).** `GET /quadrant` does not store the flag: there is no DDL, and `seed.py` drops the YAML `anchor` flag. The §3 set is read from the module the catalogue validator uses.
+- **W6-2 known gaps (deferred, recorded 2026-11-06).** Carried into `docs/ARCHITECTURE.md` §12.
+  - The anchor key has no gender, so a future gendered twin of an anchor would be flagged too. No such row exists today.
+  - Overlapping points: hover reaches only the topmost one. The keyboard and the table reach every shoe; points are not jittered, by design.
+  - Point marks are smaller than 44 px touch targets. The hit areas are ≥24 px, and the table is the touch path.
+  - `globals.css` carries only the colour tokens the quadrant page uses, light values only; the questionnaire keeps Tailwind palette classes. A dark mode needs both moved together.
+  - The questionnaire does not send `goal`, so `SurveyPayload` has no `goal` key; the contract test records this as a gap until W6-4.
 - **MSRP for the 30 calibration shoes: open spot-checks and the null-price rule (W5-1d, recorded 2026-11-05).** 23 of 30 are priced; 7 are null (Anasazi Pro, Mythos, Maestro Mid, Astroman, Katana Velcro, Elektra, Moccasym). `shoes.yaml` carries the source and confidence of each value in a `# msrp:` comment. Human spot-checks still outstanding:
   - **Katana Velcro identity.** The brand site lists two velcro Katanas, at 209 and 179. The row stays null until one is confirmed.
   - **Moccasym identity.** The original is replaced by NIAD Moccasym (125); it is unclear which product the row means.
@@ -778,6 +787,14 @@ Durations assume a solo builder. The v2 note "estimates for a small team" no lon
 ---
 
 ## 15. Changelog
+
+**v3.5 (2026-11-06)** — W6-2 done: the quadrant is served over HTTP, drawn as an interactive chart with a table alternative, and linked from home. Progress 9 → 10 of 41. No §2 decision was changed.
+- Struck **W6-2** through. Shipped: `GET /quadrant` (with `is_anchor` from `validate.ANCHORS`); `/api/quadrant`; `fetchQuadrant()` with a runtime guard; `QuadrantShoe` in `lib/types.ts`; the SVG `QuadrantChart` on the §3 axes; `QuadrantTable`; the `/quadrant` page.
+- **Built on the W6-1 relay, not a second proxy.** `api/_lib/backend.ts` gains a path allow-list (`/survey`, `/shoes`, `/quadrant`) and status masking: an unexpected upstream status becomes a fixed 502 `{"errors": [...]}`. This now applies to `/api/survey` and `/api/shoes` too; `/api/shoes`' 502 body changed from `{"detail": ...}` to the envelope. The Playwright stub is the existing `e2e/mock-api.mjs`, extended with `GET /quadrant` from a fixture taken from the seeded API.
+- **New contract test:** `backend/tests/test_frontend_contract.py` pins `lib/types.ts` to the backend. No mismatch was found.
+- **Not built:** the chart's user-target and highlight hooks, left to W6-3.
+- **Verification:** backend 1,731 passed with a seeded database; 1,713 passed and 18 skipped without one. Vitest 251, coverage thresholds met; Playwright 22 in dev and under `CI=1`. `next build` lists `/quadrant` as static and `/api/quadrant` as dynamic.
+- **§2.0:** W6-2 row added; "Nearest unblocks" updated. **§11, §12:** W6-2 struck through and the Gantt task marked `:done`. **§13:** the proxy error envelope decision, the `is_anchor` derivation, and the W6-2 known gaps.
 
 **v3.4 (2026-11-05)** — the first part of W4'-4a, and MSRP for the 30 calibration shoes. Both are partial; the progress count is unchanged at 9 of 41.
 - **W4'-4a partial:** the server derives $\mathbf{q}^*$ in `store.build_survey_row()` and refuses caller-supplied targets (§13 option a). Still to do: `schema.DERIVED_FIELDS`, `preferences.MAPPING_VERSION` with its fingerprint test, and the sweep test. The W4'-2 and W7-1 rows no longer say $\mathbf{q}^*$ is unwired.
