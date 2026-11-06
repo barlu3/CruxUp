@@ -1,4 +1,14 @@
-import { GENDERS, type Gender, type Shoe, type SurveyPayload } from "./types";
+import {
+  GENDERS,
+  PRIOR_SOURCES,
+  QUADRANTS,
+  type Gender,
+  type PriorSource,
+  type Quadrant,
+  type QuadrantShoe,
+  type Shoe,
+  type SurveyPayload,
+} from "./types";
 
 /**
  * unavailable: network failure or 502/503, retrying later may work.
@@ -68,6 +78,19 @@ export async function getShoes(): Promise<Shoe[]> {
   return body;
 }
 
+export async function getQuadrant(): Promise<QuadrantShoe[]> {
+  const response = await request("/api/quadrant", { method: "GET" });
+
+  if (response.status !== 200) {
+    throw await toStatusError(response);
+  }
+  const body = await readJson(response);
+  if (!Array.isArray(body) || !body.every(isQuadrantShoe)) {
+    throw new ApiError("bad_response", FALLBACK_MESSAGES.bad_response);
+  }
+  return body;
+}
+
 async function request(url: string, init: RequestInit): Promise<Response> {
   try {
     return await fetch(url, init);
@@ -112,6 +135,26 @@ function isShoe(value: unknown): value is Shoe {
     typeof value.model === "string" &&
     typeof value.version === "string" &&
     GENDERS.includes(value.gender as Gender)
+  );
+}
+
+function isUnitCoordinate(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= -1 && value <= 1;
+}
+
+function isQuadrantShoe(value: unknown): value is QuadrantShoe {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.brand === "string" &&
+    typeof value.model === "string" &&
+    typeof value.version === "string" &&
+    GENDERS.includes(value.gender as Gender) &&
+    isUnitCoordinate(value.x) &&
+    isUnitCoordinate(value.y) &&
+    PRIOR_SOURCES.includes(value.prior_source as PriorSource) &&
+    typeof value.is_anchor === "boolean" &&
+    QUADRANTS.includes(value.quadrant as Quadrant)
   );
 }
 

@@ -32,6 +32,25 @@ export type Terrain = (typeof TERRAINS)[number];
 export type Level = (typeof LEVELS)[number];
 export type Gender = (typeof GENDERS)[number];
 
+export const PRIOR_SOURCES = ["corpus", "hand", "spec"] as const;
+export const QUADRANTS = ["Q1", "Q2", "Q3", "Q4"] as const;
+
+export type PriorSource = (typeof PRIOR_SOURCES)[number];
+export type Quadrant = (typeof QUADRANTS)[number];
+
+export interface QuadrantShoe {
+  id: string;
+  brand: string;
+  model: string;
+  version: string;
+  gender: Gender;
+  x: number;
+  y: number;
+  prior_source: PriorSource;
+  is_anchor: boolean;
+  quadrant: Quadrant;
+}
+
 export interface AnchorEntry {
   brand: string;
   model: string;

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, getShoes, submitSurvey } from "./api";
+import { ApiError, getQuadrant, getShoes, submitSurvey } from "./api";
 
 const fetchMock = vi.fn();
 
@@ -247,5 +247,110 @@ describe("getShoes", () => {
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
 
     await expect(getShoes()).rejects.toMatchObject({ code: "unavailable" });
+  });
+});
+
+describe("getQuadrant", () => {
+  const validShoe = {
+    id: "1",
+    brand: "La Sportiva",
+    model: "Solution",
+    version: "",
+    gender: "unisex",
+    x: 0.4,
+    y: -0.6,
+    prior_source: "corpus",
+    is_anchor: true,
+    quadrant: "Q4",
+  };
+
+  it("returns the quadrant list on 200", async () => {
+    fetchMock.mockResolvedValue(jsonResponse([validShoe], 200));
+
+    expect(await getQuadrant()).toEqual([validShoe]);
+  });
+
+  it("requests /api/quadrant", async () => {
+    fetchMock.mockResolvedValue(jsonResponse([], 200));
+
+    await getQuadrant();
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/quadrant");
+  });
+
+  it("throws ApiError bad_response when 200 body is not an array", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ shoes: [] }, 200));
+
+    await expect(getQuadrant()).rejects.toMatchObject({ code: "bad_response" });
+  });
+
+  it("throws ApiError bad_response when x is a string", async () => {
+    fetchMock.mockResolvedValue(jsonResponse([{ ...validShoe, x: "0.4" }], 200));
+
+    await expect(getQuadrant()).rejects.toMatchObject({ code: "bad_response" });
+  });
+
+  it("throws ApiError bad_response when x is outside [-1, 1]", async () => {
+    fetchMock.mockResolvedValue(jsonResponse([{ ...validShoe, x: 1.5 }], 200));
+
+    await expect(getQuadrant()).rejects.toMatchObject({ code: "bad_response" });
+  });
+
+  it("accepts x at the inclusive upper bound 1", async () => {
+    const shoe = { ...validShoe, x: 1 };
+    fetchMock.mockResolvedValue(jsonResponse([shoe], 200));
+
+    expect(await getQuadrant()).toEqual([shoe]);
+  });
+
+  it("accepts y at the inclusive lower bound -1", async () => {
+    const shoe = { ...validShoe, y: -1 };
+    fetchMock.mockResolvedValue(jsonResponse([shoe], 200));
+
+    expect(await getQuadrant()).toEqual([shoe]);
+  });
+
+  it("throws ApiError bad_response when y is missing", async () => {
+    const withoutY: Record<string, unknown> = { ...validShoe };
+    delete withoutY.y;
+    fetchMock.mockResolvedValue(jsonResponse([withoutY], 200));
+
+    await expect(getQuadrant()).rejects.toMatchObject({ code: "bad_response" });
+  });
+
+  it("throws ApiError bad_response on an unknown prior_source", async () => {
+    fetchMock.mockResolvedValue(jsonResponse([{ ...validShoe, prior_source: "guess" }], 200));
+
+    await expect(getQuadrant()).rejects.toMatchObject({ code: "bad_response" });
+  });
+
+  it("throws ApiError bad_response when is_anchor is not a boolean", async () => {
+    fetchMock.mockResolvedValue(jsonResponse([{ ...validShoe, is_anchor: "yes" }], 200));
+
+    await expect(getQuadrant()).rejects.toMatchObject({ code: "bad_response" });
+  });
+
+  it("throws ApiError bad_response on quadrant ON-AXIS", async () => {
+    fetchMock.mockResolvedValue(jsonResponse([{ ...validShoe, quadrant: "ON-AXIS" }], 200));
+
+    await expect(getQuadrant()).rejects.toMatchObject({ code: "bad_response" });
+  });
+
+  it("throws ApiError unavailable on 503", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ errors: ["down"] }, 503));
+
+    await expect(getQuadrant()).rejects.toMatchObject({ code: "unavailable" });
+  });
+
+  it("throws ApiError timeout on 504", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ errors: ["slow"] }, 504));
+
+    await expect(getQuadrant()).rejects.toMatchObject({ code: "timeout" });
+  });
+
+  it("throws ApiError unavailable on a network TypeError", async () => {
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+
+    await expect(getQuadrant()).rejects.toMatchObject({ code: "unavailable" });
   });
 });
