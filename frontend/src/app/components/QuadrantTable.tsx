@@ -15,7 +15,7 @@ const CELL_CLASS = "border border-border px-3 py-2 text-left";
 export function QuadrantTable({ shoes }: { shoes: QuadrantShoe[] }) {
   return (
     <table className="w-full border-collapse text-sm text-foreground">
-      <caption className="mb-2 text-left text-xl font-semibold">All shoes by quadrant</caption>
+      <caption className="sr-only">All shoes by quadrant</caption>
       <thead>
         <tr>
           <th scope="col" className={CELL_CLASS}>Shoe</th>

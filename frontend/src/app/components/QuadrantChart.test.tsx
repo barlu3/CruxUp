@@ -100,6 +100,20 @@ describe("QuadrantChart marks", () => {
     expect(Number(container.querySelector("circle.fill-transparent")?.getAttribute("r"))).toBeGreaterThanOrEqual(20);
   });
 
+  it.each([
+    ["Comfort", "start"],
+    ["Performance", "end"],
+  ])("anchors the %s axis label as %s", (text, anchor) => {
+    render(<QuadrantChart shoes={SHOES} />);
+    expect(screen.getByText(text)).toHaveAttribute("text-anchor", anchor);
+  });
+
+  it.each(["Comfort", "Performance"])("keeps the %s axis label anchor inside the viewBox", (text) => {
+    render(<QuadrantChart shoes={SHOES} />);
+    const x = labelPosition(text, "x");
+    expect(x >= 0 && x <= VIEW_SIZE).toBe(true);
+  });
+
   it("places the Q3 label above the plot frame", () => {
     render(<QuadrantChart shoes={SHOES} />);
     expect(labelPosition("Q3 · Comfort + soft", "y")).toBeLessThan(PLOT_PADDING);

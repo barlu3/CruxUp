@@ -112,10 +112,11 @@ export function QuadrantChart({ shoes, target, highlightIds }: QuadrantChartProp
           <title id={titleId}>Shoe quadrant chart: comfort to performance, stiff to soft</title>
           <Frame />
           <g className="fill-muted text-xs" aria-hidden="true">
-            <text x={PLOT_PADDING - 8} y={CENTER} textAnchor="end" dominantBaseline="middle">Comfort</text>
-            <text x={PLOT_END + 8} y={CENTER} textAnchor="start" dominantBaseline="middle">Performance</text>
             <text x={CENTER} y={PLOT_PADDING - 32} textAnchor="middle">Soft</text>
             <text x={CENTER} y={PLOT_END + 36} textAnchor="middle">Stiff</text>
+            {/* Anchored to the frame edges on their own row: beside the frame "Performance" overflows the viewBox. */}
+            <text x={PLOT_PADDING} y={PLOT_END + 56} textAnchor="start">Comfort</text>
+            <text x={PLOT_END} y={PLOT_END + 56} textAnchor="end">Performance</text>
             {/* Outside the frame so no dot or anchor label can sit on a quadrant label. */}
             <text x={PLOT_END} y={PLOT_END + 16} textAnchor="end">{QUADRANT_LABEL.Q1}</text>
             <text x={PLOT_PADDING} y={PLOT_END + 16} textAnchor="start">{QUADRANT_LABEL.Q2}</text>

@@ -20,6 +20,11 @@ describe("QuadrantTable", () => {
     expect(screen.getByRole("table", { name: "All shoes by quadrant" })).toBeInTheDocument();
   });
 
+  it("hides the caption visually because the section heading already shows it", () => {
+    render(<QuadrantTable shoes={SHOES} />);
+    expect(screen.getByText("All shoes by quadrant")).toHaveClass("sr-only");
+  });
+
   it("has one row group header per quadrant", () => {
     render(<QuadrantTable shoes={SHOES} />);
     expect(screen.getAllByRole("rowheader")).toHaveLength(4);
