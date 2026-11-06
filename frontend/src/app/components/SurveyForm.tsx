@@ -1,9 +1,10 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
-import { fetchShoes, submitSurvey } from "../lib/api";
+import { SURVEY_TOKEN_KEY, fetchShoes, submitSurvey } from "../lib/api";
 import { interpretErrors } from "../lib/errors";
 import type { SizeProblem } from "../lib/errors";
 import { buildPayload, emptyFormState } from "../lib/payload";
@@ -26,6 +27,8 @@ const CONTROL = `mt-1 block w-full rounded border border-gray-500 px-2 py-1 ${FO
 
 const FALLBACK_ERROR = "One of your answers could not be accepted. Please check them and try again.";
 const GENERIC_ERROR = "Something went wrong sending your answers. Please try again.";
+const STORAGE_ERROR =
+  "Your answers were saved, but your browser blocked site storage, so your results can't be shown. Allow storage for this site (or leave private browsing), then reload the page and take the survey again.";
 
 interface SelectFieldProps {
   field: EnumField;
@@ -99,7 +102,8 @@ function NumberField({ id, label, hint, value, bounds, onChange }: NumberFieldPr
 
 type Failure =
   | { kind: "invalid"; sizeProblems: SizeProblem[]; unmatched: string[] }
-  | { kind: "generic" };
+  | { kind: "generic" }
+  | { kind: "storage" };
 
 const sizeErrorId = (shoeId: string) => `size-error-${shoeId}`;
 
@@ -109,11 +113,10 @@ export function SurveyForm() {
   const [catalogue, setCatalogue] = useState<CatalogueStatus>("loading");
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
-  const [done, setDone] = useState(false);
   const [attempt, setAttempt] = useState(0);
   /** shoe id -> id of its error message; cleared per shoe when its size is edited. */
   const [sizeErrors, setSizeErrors] = useState<Record<string, string>>({});
-  const confirmationRef = useRef<HTMLHeadingElement>(null);
+  const router = useRouter();
   const alertRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -138,10 +141,6 @@ export function SurveyForm() {
   };
 
   useEffect(() => {
-    if (done) confirmationRef.current?.focus();
-  }, [done]);
-
-  useEffect(() => {
     if (failure) alertRef.current?.focus();
   }, [failure]);
 
@@ -158,9 +157,21 @@ export function SurveyForm() {
     setFailure(null);
     setSizeErrors({});
     const result = await submitSurvey(buildPayload(state));
+    if (result.kind === "created") {
+      // The token goes in this tab's storage, never the URL; submit stays busy until /results loads.
+      try {
+        sessionStorage.setItem(SURVEY_TOKEN_KEY, result.surveyToken);
+      } catch {
+        // Without the token /results could only say "not found", so stay here and say why.
+        // Pending stays set: the survey row exists, so a second submit would create a duplicate.
+        setFailure({ kind: "storage" });
+        return;
+      }
+      router.push("/results");
+      return;
+    }
     setPending(false);
-    if (result.kind === "created") setDone(true);
-    else if (result.kind === "invalid") {
+    if (result.kind === "invalid") {
       const { sizeProblems, unmatched } = interpretErrors(
         result.errors,
         state.known_good_shoes,
@@ -170,17 +181,6 @@ export function SurveyForm() {
       setFailure({ kind: "invalid", sizeProblems, unmatched });
     }
     else setFailure({ kind: "generic" });
-  }
-
-  if (done) {
-    return (
-      <div role="status" className="mt-6">
-        <h2 ref={confirmationRef} tabIndex={-1} className="text-xl font-semibold">
-          Thank you, your answers are saved.
-        </h2>
-        <p className="mt-2">We will use them to match you with climbing shoes.</p>
-      </div>
-    );
   }
 
   const onSizeEdit = (shoeId: string) =>
@@ -316,6 +316,8 @@ export function SurveyForm() {
                 </>
               ) : null}
             </>
+          ) : failure.kind === "storage" ? (
+            <p>{STORAGE_ERROR}</p>
           ) : (
             <p>{GENERIC_ERROR}</p>
           )}
@@ -327,7 +329,7 @@ export function SurveyForm() {
         aria-disabled={pending}
         className={`mt-6 rounded bg-blue-800 px-4 py-2 font-medium text-white aria-disabled:cursor-wait aria-disabled:opacity-60 ${FOCUS}`}
       >
-        {pending ? "Sending…" : "Submit answers"}
+        {pending && failure?.kind !== "storage" ? "Sending…" : "Submit answers"}
       </button>
     </form>
   );

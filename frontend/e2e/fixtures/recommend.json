@@ -1,0 +1,110 @@
+{
+  "scorer_version": "v0-slice",
+  "target": {
+    "x": 0.7,
+    "y": 0.5
+  },
+  "terms": {
+    "fit": true,
+    "style": true,
+    "budget": true
+  },
+  "gated_out": {
+    "over_budget": 2,
+    "size_unavailable": 0,
+    "unplaced": 0
+  },
+  "warnings": [],
+  "results": [
+    {
+      "id": "00000000-0000-4000-8000-000000000022",
+      "brand": "Scarpa",
+      "model": "Drago",
+      "version": "",
+      "gender": "unisex",
+      "x": 0.8,
+      "y": 0.85,
+      "prior_source": "hand",
+      "is_anchor": true,
+      "quadrant": "Q4",
+      "msrp_usd": 229,
+      "price_unknown": false,
+      "fit_score": 0.9,
+      "style_score": 0.871,
+      "budget_score": 0.542,
+      "total_score": 0.835,
+      "confidence": 0.9,
+      "confidence_label": "high",
+      "rank": 1,
+      "warnings": []
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000024",
+      "brand": "Scarpa",
+      "model": "Instinct",
+      "version": "VSR",
+      "gender": "unisex",
+      "x": 0.7,
+      "y": 0.4,
+      "prior_source": "hand",
+      "is_anchor": true,
+      "quadrant": "Q4",
+      "msrp_usd": 219,
+      "price_unknown": false,
+      "fit_score": 0.8,
+      "style_score": 0.965,
+      "budget_score": 0.562,
+      "total_score": 0.83,
+      "confidence": 0.85,
+      "confidence_label": "high",
+      "rank": 2,
+      "warnings": []
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000023",
+      "brand": "Scarpa",
+      "model": "Instinct",
+      "version": "VS",
+      "gender": "unisex",
+      "x": 0.6,
+      "y": -0.45,
+      "prior_source": "hand",
+      "is_anchor": false,
+      "quadrant": "Q1",
+      "msrp_usd": 219,
+      "price_unknown": false,
+      "fit_score": 0.7,
+      "style_score": 0.662,
+      "budget_score": 0.562,
+      "total_score": 0.664,
+      "confidence": 0.432,
+      "confidence_label": "low",
+      "rank": 3,
+      "warnings": [
+        "catalog_field_missing:closure"
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000014",
+      "brand": "La Sportiva",
+      "model": "Mythos",
+      "version": "",
+      "gender": "unisex",
+      "x": -0.55,
+      "y": -0.45,
+      "prior_source": "hand",
+      "is_anchor": false,
+      "quadrant": "Q2",
+      "msrp_usd": null,
+      "price_unknown": true,
+      "fit_score": 0.6,
+      "style_score": 0.445,
+      "budget_score": 0.5,
+      "total_score": 0.523,
+      "confidence": 0.6,
+      "confidence_label": "medium",
+      "rank": 4,
+      "warnings": []
+    }
+  ]
+}

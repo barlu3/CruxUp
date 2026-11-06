@@ -155,6 +155,104 @@ describe("QuadrantChart legend", () => {
     render(<QuadrantChart shoes={SHOES} />);
     expect(within(screen.getByRole("list", { name: "Legend" })).getByText("Section 3 reference shoe")).toBeInTheDocument();
   });
+
+  it("lists Your target and Highlighted when both are given", () => {
+    render(<QuadrantChart shoes={SHOES} target={{ x: 0.2, y: 0.2 }} highlightIds={["drago"]} />);
+    const legend = within(screen.getByRole("list", { name: "Legend" }));
+    expect([legend.queryByText("Your target"), legend.queryByText("Highlighted")]).not.toContain(null);
+  });
+
+  it("lists neither Your target nor Highlighted without them", () => {
+    render(<QuadrantChart shoes={SHOES} />);
+    const legend = within(screen.getByRole("list", { name: "Legend" }));
+    expect([legend.queryByText("Your target"), legend.queryByText("Highlighted")]).toEqual([null, null]);
+  });
+});
+
+describe("QuadrantChart target and highlight", () => {
+  it("renders a mark named Your target when a target is given", () => {
+    render(<QuadrantChart shoes={SHOES} target={{ x: 0.2, y: 0.2 }} />);
+    expect(screen.getByRole("img", { name: "Your target" })).toBeInTheDocument();
+  });
+
+  it("renders no target mark without a target", () => {
+    render(<QuadrantChart shoes={SHOES} />);
+    expect(screen.queryByRole("img", { name: "Your target" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the target mark from taking the pointer", () => {
+    render(<QuadrantChart shoes={SHOES} target={{ x: 0.8, y: 0.7 }} />);
+    expect(screen.getByRole("img", { name: "Your target" })).toHaveClass("pointer-events-none");
+  });
+
+  it("marks a highlighted point as highlighted", () => {
+    render(<QuadrantChart shoes={SHOES} highlightIds={["drago"]} />);
+    expect(getPoint("Scarpa Drago")).toHaveAttribute("data-state", "highlighted");
+  });
+
+  it("marks a non-highlighted point as dimmed when a highlight is active", () => {
+    render(<QuadrantChart shoes={SHOES} highlightIds={["drago"]} />);
+    expect(getPoint("La Sportiva Solution")).toHaveAttribute("data-state", "dimmed");
+  });
+
+  it("includes highlighted in the accessible name of a highlighted point", () => {
+    render(<QuadrantChart shoes={SHOES} highlightIds={["drago"]} />);
+    expect(getPoint("Scarpa Drago")).toHaveAccessibleName(/Highlighted\.$/);
+  });
+
+  it("keeps a highlighted spec-derived point hollow", () => {
+    render(<QuadrantChart shoes={SHOES} highlightIds={["katana"]} />);
+    expect(getPoint("La Sportiva Katana Lace")).toHaveClass("fill-background");
+  });
+
+  it("leaves points in the default state when highlightIds is empty", () => {
+    render(<QuadrantChart shoes={SHOES} highlightIds={[]} />);
+    expect(getPoint("Scarpa Drago")).not.toHaveAttribute("data-state");
+  });
+
+  it("shows a visible text label for a highlighted non-anchor", () => {
+    render(<QuadrantChart shoes={SHOES} highlightIds={["solution"]} />);
+    expect(screen.getByText("Solution")).toBeInTheDocument();
+  });
+
+  it("shows no text label for a dimmed non-anchor", () => {
+    render(<QuadrantChart shoes={SHOES} highlightIds={["drago"]} />);
+    expect(screen.queryByText("Solution")).not.toBeInTheDocument();
+  });
+
+  it("flips a label to the left when it would cross the right plot edge", () => {
+    render(<QuadrantChart shoes={SHOES} highlightIds={["solution"]} />);
+    expect(screen.getByText("Solution")).toHaveAttribute("text-anchor", "end");
+  });
+
+  it("keeps a label on the right when it fits inside the plot", () => {
+    render(<QuadrantChart shoes={SHOES} highlightIds={["katana"]} />);
+    expect(screen.getByText("Katana Lace")).toHaveAttribute("text-anchor", "start");
+  });
+
+  it("keeps the label on the right for a point on the left plot edge", () => {
+    const edge: QuadrantShoe = { ...SOLUTION, id: "edge", model: "Edge", x: -1 };
+    render(<QuadrantChart shoes={[edge]} highlightIds={["edge"]} />);
+    expect(screen.getByText("Edge")).toHaveAttribute("text-anchor", "start");
+  });
+
+  it("puts a label that fits neither side left of a centre-right point", () => {
+    const wide: QuadrantShoe = { ...SOLUTION, id: "wide", model: "Extraordinarily Long Model Name", x: 0.3 };
+    render(<QuadrantChart shoes={[wide]} highlightIds={["wide"]} />);
+    expect(screen.getByText(/Extraordinarily Long Model Name/)).toHaveAttribute("text-anchor", "end");
+  });
+
+  it("puts a label that fits neither side right of a centre-left point", () => {
+    const wide: QuadrantShoe = { ...SOLUTION, id: "wide", model: "Extraordinarily Long Model Name", x: -0.3 };
+    render(<QuadrantChart shoes={[wide]} highlightIds={["wide"]} />);
+    expect(screen.getByText(/Extraordinarily Long Model Name/)).toHaveAttribute("text-anchor", "start");
+  });
+
+  it("says Highlighted in the tooltip of a highlighted point", () => {
+    render(<QuadrantChart shoes={SHOES} highlightIds={["drago"]} />);
+    fireEvent.mouseEnter(getPoint("Scarpa Drago"));
+    expect(screen.getByRole("tooltip", { hidden: true })).toHaveTextContent("Highlighted.");
+  });
 });
 
 describe("QuadrantChart empty state", () => {

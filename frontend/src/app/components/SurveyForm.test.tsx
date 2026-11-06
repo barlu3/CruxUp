@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import shoes from "../../../e2e/fixtures/shoes.json";
 import { SurveyForm } from "./SurveyForm";
 
+const push = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+
 type FetchMock = ReturnType<typeof vi.fn>;
 
 const json = (status: number, body: unknown) =>
@@ -37,8 +40,15 @@ function installFetch(opts: {
 const surveyCalls = () =>
   fetchMock.mock.calls.filter((c) => String(c[0]) === "/api/survey");
 
-beforeEach(() => installFetch());
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => {
+  push.mockReset();
+  sessionStorage.clear();
+  installFetch();
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 async function renderReady() {
   const user = userEvent.setup();
@@ -132,7 +142,7 @@ describe("SurveyForm", () => {
     expect(regions[1]).toHaveTextContent("No matching shoes. Shoes you already chose are not shown.");
   });
 
-  it("submits an anchors-only answer (all-NULL fit profile) and shows the confirmation", async () => {
+  it("submits an anchors-only answer (all-NULL fit profile) and goes to /results", async () => {
     const user = await renderReady();
     await user.type(screen.getByLabelText("Shoes that fit you well"), "instinct");
     await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
@@ -143,7 +153,7 @@ describe("SurveyForm", () => {
     expect(screen.getByRole("button", { name: "Submit answers" })).toHaveFocus();
     await user.keyboard("{Enter}");
 
-    await waitFor(() => expect(screen.getByRole("status")).toBeInTheDocument());
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/results"));
     expect(surveyCalls()).toHaveLength(1);
     const [url, init] = surveyCalls()[0] as [string, RequestInit];
     expect(url).toBe("/api/survey");
@@ -153,18 +163,91 @@ describe("SurveyForm", () => {
         { brand: "Scarpa", model: "Instinct", version: "VSR", gender: "unisex" },
       ],
     });
-    const status = screen.getByRole("status");
-    const heading = screen.getByRole("heading", { name: /thank/i });
-    expect(status).toContainElement(heading);
-    expect(heading).toHaveFocus();
     expect(screen.queryByText("tok")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Submit answers" })).toBeNull();
+  });
+
+  it("stores the survey token in sessionStorage under cruxup.surveyToken", async () => {
+    const user = await renderReady();
+    await user.click(screen.getByRole("button", { name: "Submit answers" }));
+    await waitFor(() => expect(sessionStorage.getItem("cruxup.surveyToken")).toBe("tok"));
+  });
+
+  it("never puts the token in the pushed URL", async () => {
+    const user = await renderReady();
+    await user.click(screen.getByRole("button", { name: "Submit answers" }));
+    await waitFor(() => expect(push.mock.calls).toEqual([["/results"]]));
+  });
+
+  it("posts the survey exactly once when sessionStorage throws", async () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("blocked", "SecurityError");
+    });
+    const user = await renderReady();
+    await user.click(screen.getByRole("button", { name: "Submit answers" }));
+    await screen.findByRole("alert");
+    expect(surveyCalls()).toHaveLength(1);
+  });
+
+  it("sends no second survey when submit is clicked again after sessionStorage throws", async () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("blocked", "SecurityError");
+    });
+    const user = await renderReady();
+    const submit = screen.getByRole("button", { name: "Submit answers" });
+    await user.click(submit);
+    await screen.findByRole("alert");
+    await user.click(submit);
+    expect(surveyCalls()).toHaveLength(1);
+  });
+
+  it("does not navigate to /results when sessionStorage throws", async () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("blocked", "SecurityError");
+    });
+    const user = await renderReady();
+    await user.click(screen.getByRole("button", { name: "Submit answers" }));
+    await screen.findByRole("alert");
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("explains that the browser blocked storage when sessionStorage throws", async () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("blocked", "SecurityError");
+    });
+    const user = await renderReady();
+    await user.click(screen.getByRole("button", { name: "Submit answers" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("your browser blocked site storage");
+  });
+
+  it("keeps submit disabled with its normal label after a storage failure", async () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("blocked", "SecurityError");
+    });
+    const user = await renderReady();
+    await user.click(screen.getByRole("button", { name: "Submit answers" }));
+    await screen.findByRole("alert");
+    expect(screen.getByRole("button", { name: "Submit answers" })).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("keeps submit busy after a 201 while /results loads", async () => {
+    const user = await renderReady();
+    const submit = screen.getByRole("button", { name: "Submit answers" });
+    await user.click(submit);
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    expect(submit).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("shows the generic alert for a 201 without a token", async () => {
+    installFetch({ surveyResponse: () => json(201, {}) });
+    const user = await renderReady();
+    await user.click(screen.getByRole("button", { name: "Submit answers" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/something went wrong/i);
   });
 
   it("submits an empty form as {}", async () => {
     const user = await renderReady();
     await user.click(screen.getByRole("button", { name: "Submit answers" }));
-    await waitFor(() => expect(screen.getByRole("status")).toBeInTheDocument());
+    await waitFor(() => expect(push).toHaveBeenCalled());
     expect(JSON.parse((surveyCalls()[0][1] as RequestInit).body as string)).toEqual({});
   });
 
@@ -212,7 +295,7 @@ describe("SurveyForm", () => {
     await user.click(screen.getByRole("button", { name: "Submit answers" }));
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(/something went wrong/i);
-    expect(screen.queryByRole("heading", { name: /thank/i })).toBeNull();
+    expect(push).not.toHaveBeenCalled();
   });
 
   it("shows the generic alert for a non-201, non-422 reply", async () => {
@@ -239,7 +322,7 @@ describe("SurveyForm", () => {
     await user.keyboard("{Enter}");
     expect(surveyCalls()).toHaveLength(1);
     release(json(201, { survey_token: "t" }));
-    await waitFor(() => expect(screen.getByRole("status")).toBeInTheDocument());
+    await waitFor(() => expect(push).toHaveBeenCalled());
     expect(surveyCalls()).toHaveLength(1);
   });
 
@@ -304,7 +387,7 @@ describe("SurveyForm", () => {
     expect(screen.getByLabelText("Shoes that fit you well")).toBeDisabled();
     await user.selectOptions(screen.getByLabelText("Instep"), "low");
     await user.click(screen.getByRole("button", { name: "Submit answers" }));
-    await waitFor(() => expect(screen.getByRole("status")).toBeInTheDocument());
+    await waitFor(() => expect(push).toHaveBeenCalled());
     expect(JSON.parse((surveyCalls()[0][1] as RequestInit).body as string)).toEqual({
       instep: "low",
     });

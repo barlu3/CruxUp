@@ -2,6 +2,7 @@
 // GET /shoes and GET /quadrant serve real-catalogue fixtures (quadrant.json is
 // the seeded backend's GET /quadrant with shoes.json's ids); POST /survey
 // records the last body. A body containing "__e2e_422__" is answered with a 422.
+// POST /recommend serves fixtures/recommend.json; the token "e2e-expired-token" is a 404.
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -11,6 +12,8 @@ const PORT = 8100;
 const here = dirname(fileURLToPath(import.meta.url));
 const shoes = readFileSync(join(here, "fixtures", "shoes.json"), "utf8");
 const quadrant = readFileSync(join(here, "fixtures", "quadrant.json"), "utf8");
+const recommend = readFileSync(join(here, "fixtures", "recommend.json"), "utf8");
+const EXPIRED_TOKEN = "e2e-expired-token";
 let lastSurvey = null;
 
 function send(res, status, body) {
@@ -22,6 +25,21 @@ createServer((req, res) => {
   const { pathname } = new URL(req.url ?? "/", `http://127.0.0.1:${PORT}`);
   if (req.method === "GET" && pathname === "/shoes") return send(res, 200, shoes);
   if (req.method === "GET" && pathname === "/quadrant") return send(res, 200, quadrant);
+  if (req.method === "POST" && pathname === "/recommend") {
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => {
+      let token;
+      try {
+        token = JSON.parse(Buffer.concat(chunks).toString("utf8"))?.survey_token;
+      } catch {
+        return send(res, 422, { errors: ["request body is not valid JSON"] });
+      }
+      if (token === EXPIRED_TOKEN) return send(res, 404, { errors: ["survey not found"] });
+      return send(res, 200, recommend);
+    });
+    return;
+  }
   if (req.method === "GET" && pathname === "/__last-survey") return send(res, 200, lastSurvey);
   if (req.method === "POST" && pathname === "/survey") {
     const chunks = [];

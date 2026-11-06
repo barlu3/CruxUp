@@ -50,7 +50,7 @@ test("keyboard only: pick an anchor and submit with nothing else", async ({ page
   await expect(page.getByRole("button", { name: "Submit answers" })).toBeFocused();
   await page.keyboard.press("Enter");
 
-  await expect(page.getByRole("status").filter({ hasText: "Thank you" })).toContainText("Thank you");
+  await expect(page).toHaveURL(/\/results$/);
   const last = await request.get(`${MOCK}/__last-survey`);
   expect(await last.json()).toEqual(anchorsOnly);
   expect(foreignRequests(browserRequests)).toEqual([]);
@@ -97,8 +97,9 @@ test("the browser never calls the backend directly", async ({ page }) => {
   page.on("request", (r) => urls.push(r.url()));
   await page.goto("/survey");
   await expect(page.getByRole("combobox", { name: "Shoes that fit you well" })).toBeEnabled();
+  const recommendRequest = page.waitForRequest(/\/api\/recommend$/);
   await page.getByRole("button", { name: "Submit answers" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Thank you" })).toBeVisible();
+  await recommendRequest;
   expect(urls.some((u) => u.endsWith("/api/shoes"))).toBe(true);
   expect(urls.some((u) => u.endsWith("/api/survey"))).toBe(true);
   expect(foreignRequests(urls)).toEqual([]);
@@ -156,11 +157,11 @@ test.describe("WCAG 2 A/AA scans", () => {
     expect(await axeViolations(page)).toEqual([]);
   });
 
-  test("on the confirmation", async ({ page }) => {
+  test("on the results page", async ({ page }) => {
     await page.goto("/survey");
     await expect(picker(page)).toBeEnabled();
     await page.getByRole("button", { name: "Submit answers" }).click();
-    await expect(page.getByRole("status").filter({ hasText: "Thank you" })).toContainText("Thank you");
+    await expect(page.getByRole("heading", { level: 2, name: "Ranked shoes" })).toBeVisible();
     expect(await axeViolations(page)).toEqual([]);
   });
 });
