@@ -1,5 +1,5 @@
 // Shared types mirroring the backend contract (backend/app/survey/schema.py,
-// anchors.py and the GET /shoes and GET /quadrant responses).
+// anchors.py and the GET /shoes, GET /quadrant and POST /recommend responses).
 // backend/tests/test_frontend_contract.py parses this file and fails if it
 // drifts from them.
 
@@ -67,6 +67,57 @@ export interface QuadrantShoe {
   /** One of the five section-3 reference shoes. */
   is_anchor: boolean;
   quadrant: Quadrant;
+}
+
+export type ConfidenceLabel = "high" | "medium" | "low";
+
+/** One ranked row of POST /recommend: a placed shoe plus its scores. */
+export interface Recommendation extends QuadrantShoe {
+  /** null when the catalogue has no price; then price_unknown is true. */
+  msrp_usd: number | null;
+  price_unknown: boolean;
+  /** Each term score is null when that term was dropped for the whole survey. */
+  fit_score: number | null;
+  style_score: number | null;
+  budget_score: number | null;
+  total_score: number;
+  confidence: number;
+  confidence_label: ConfidenceLabel;
+  /** 1..n in response order. */
+  rank: number;
+  warnings: string[];
+}
+
+// Flat interfaces rather than inline object types: the contract test's key
+// parser cannot read nested object literals.
+export interface RecommendTarget {
+  x: number;
+  y: number;
+}
+
+/** Which terms fed the score; a dropped term's weight is renormalised away. */
+export interface RecommendTerms {
+  fit: boolean;
+  style: boolean;
+  budget: boolean;
+}
+
+/** How many active shoes each gate dropped. */
+export interface GatedOut {
+  over_budget: number;
+  size_unavailable: number;
+  unplaced: number;
+}
+
+/** POST /recommend 200 body. */
+export interface RecommendResponse {
+  scorer_version: string;
+  /** The style target used; null when the survey has none. */
+  target: RecommendTarget | null;
+  terms: RecommendTerms;
+  gated_out: GatedOut;
+  warnings: string[];
+  results: Recommendation[];
 }
 
 export interface SurveyErrorBody {

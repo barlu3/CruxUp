@@ -1,6 +1,6 @@
 """[W6-2] Pins frontend/src/app/lib/types.ts to the Python contract it mirrors:
-survey/schema.py, survey/anchors.py, GET /shoes (ShoeOut) and GET /quadrant
-(QuadrantShoeOut).
+survey/schema.py, survey/anchors.py, GET /shoes (ShoeOut), GET /quadrant
+(QuadrantShoeOut) and POST /recommend (RecommendOut, W6-3).
 
 The TypeScript string-literal unions and interface keys are parsed back out of
 the source text, the way test_survey.py parses the CHECK constraints out of
@@ -29,6 +29,13 @@ import anchors as A  # noqa: E402
 import priors as PR  # noqa: E402
 import schema as S   # noqa: E402
 from app.api.routes.quadrant import QuadrantShoeOut  # noqa: E402
+from app.api.routes.recommend import (  # noqa: E402
+    GatedOutOut,
+    RecommendationOut,
+    RecommendOut,
+    TargetOut,
+    TermsOut,
+)
 from app.api.routes.shoes import ShoeOut  # noqa: E402
 
 # store.build_survey_row derives these from `goal` and refuses them from a client.
@@ -59,7 +66,10 @@ def _parse_union(source: str, name: str) -> list[str]:
 
 
 def _parse_interface_keys(source: str, name: str) -> list[str]:
-    match = re.search(rf"export interface {name}\s*\{{([^}}]*)\}}", _strip_comments(source))
+    match = re.search(
+        rf"export interface {name}(?:\s+extends\s+\w+)?\s*\{{([^}}]*)\}}",
+        _strip_comments(source),
+    )
     assert match, f"types.ts has no `export interface {name} {{...}}`"
     return re.findall(r"^\s*(\w+)\??\s*:", match.group(1), flags=re.MULTILINE)
 
@@ -115,6 +125,37 @@ def test_typescript_quadrant_shoe_keys_match_quadrant_shoe_out_fields(types_sour
     assert sorted(parsed) == sorted(QuadrantShoeOut.model_fields)
 
 
+def test_typescript_confidence_label_matches_recommendation_literal(types_source):
+    expected = typing.get_args(RecommendationOut.model_fields["confidence_label"].annotation)
+    assert sorted(_parse_union(types_source, "ConfidenceLabel")) == sorted(expected)
+
+
+def test_typescript_recommendation_extends_quadrant_shoe(types_source):
+    assert re.search(
+        r"export interface Recommendation extends QuadrantShoe\s*\{", _strip_comments(types_source)
+    )
+
+
+def test_typescript_recommendation_keys_are_the_fields_added_to_quadrant_shoe_out(types_source):
+    parsed = _parse_interface_keys(types_source, "Recommendation")
+    assert sorted(parsed) == sorted(
+        set(RecommendationOut.model_fields) - set(QuadrantShoeOut.model_fields)
+    )
+
+
+@pytest.mark.parametrize(
+    ("interface", "model"),
+    [
+        ("RecommendResponse", RecommendOut),
+        ("RecommendTarget", TargetOut),
+        ("RecommendTerms", TermsOut),
+        ("GatedOut", GatedOutOut),
+    ],
+)
+def test_typescript_recommend_interface_keys_match_pydantic_fields(interface, model, types_source):
+    assert sorted(_parse_interface_keys(types_source, interface)) == sorted(model.model_fields)
+
+
 def test_parser_fails_loudly_when_a_union_is_missing(types_source):
     with pytest.raises(AssertionError, match="NoSuchType"):
         _parse_union(types_source, "NoSuchType")
@@ -128,3 +169,8 @@ def test_parser_ignores_commented_out_values():
 def test_interface_parser_reads_optional_keys_and_skips_doc_comments():
     source = 'export interface Y {\n  /** a: doc */\n  a?: string;\n  b: number;\n}'
     assert _parse_interface_keys(source, "Y") == ["a", "b"]
+
+
+def test_interface_parser_reads_keys_of_an_extending_interface():
+    source = "export interface Child extends Base {\n  a: string;\n  b?: number;\n}"
+    assert _parse_interface_keys(source, "Child") == ["a", "b"]
