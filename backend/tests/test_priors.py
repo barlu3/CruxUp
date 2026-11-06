@@ -9,6 +9,7 @@ quietly producing worse priors for 70 shoes nobody hand-checked.
 from __future__ import annotations
 
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 import numpy  # noqa: F401 -- hard import: a missing numpy must FAIL, not skip the regression guard
@@ -20,6 +21,7 @@ sys.path.insert(0, str(CATALOG_DIR))
 import priors as P  # noqa: E402
 
 SHOES = yaml.safe_load((CATALOG_DIR / "data" / "shoes.yaml").read_text())["shoes"]
+PRICED_SHOES = [s for s in SHOES if s.get("msrp_usd") is not None]
 
 
 # --------------------------------------------------------------------------
@@ -32,6 +34,23 @@ def test_derived_priors_satisfy_sql_constraints(shoe):
     x, y = P.derive_prior(shoe)
     assert -1 <= x <= 1 and -1 <= y <= 1
     assert x != 0 and y != 0, "a prior on an axis has no quadrant; validate.py rejects it"
+
+
+@pytest.mark.parametrize("shoe", PRICED_SHOES, ids=lambda s: f"{s['brand']}-{s['model']}")
+def test_msrp_is_positive_and_fits_numeric_7_2(shoe):
+    """shoe.msrp_usd is NUMERIC(7,2); validate.py checks only that it is a number."""
+    assert 0 < Decimal(str(shoe["msrp_usd"])) <= Decimal("99999.99")
+
+
+@pytest.mark.parametrize("shoe", PRICED_SHOES, ids=lambda s: f"{s['brand']}-{s['model']}")
+def test_msrp_has_at_most_two_decimals(shoe):
+    price = Decimal(str(shoe["msrp_usd"]))
+    assert price == price.quantize(Decimal("0.01"))
+
+
+def test_catalog_has_priced_shoes():
+    """Guards the parametrized msrp test above against passing on zero cases."""
+    assert len(PRICED_SHOES) > 0
 
 
 def test_unknown_specs_still_produce_a_placeable_point():

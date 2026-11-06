@@ -10,7 +10,10 @@ validation of its own, or the rules drift from the Python layer that
 test_survey.py already pins. Section B's "multi-error payload" and "parity
 property" tests exist specifically to catch that drift -- they assert the
 API's error list is byte-for-byte what `build_survey_row()` itself returns,
-not a paraphrase of it.
+not a paraphrase of it. That includes q* derivation: the route sends a raw
+`goal` answer to build_survey_row, which converts it to goal_x_target /
+goal_y_target and refuses caller-supplied targets; the route itself does none
+of that.
 
 `GET /shoes` backs the frontend's anchor picker, and three real catalog
 pairs share (brand, model) and differ only by `version` (and, for one pair,
@@ -54,6 +57,7 @@ sys.path.insert(0, str(BACKEND_DIR))
 sys.path.insert(0, str(SURVEY_DIR))
 
 import anchors as A  # noqa: E402
+import preferences as P  # noqa: E402
 import schema as S  # noqa: E402
 import store as ST  # noqa: E402
 
@@ -263,6 +267,21 @@ def test_valid_full_submission_is_201_with_only_survey_token_and_one_insert():
     assert conn.rollbacks == 0
 
 
+def _insert_params_for_goal_submission():
+    conn = _FakeConn()
+    client = _client_with_overrides(conn=conn, catalog=_catalog())
+    client.post("/survey", json={"discipline": "trad", "goal": 1})
+    return conn.calls[0][1]
+
+
+def test_goal_submission_inserts_the_derived_target():
+    assert _insert_params_for_goal_submission()["goal_x_target"] == -0.4
+
+
+def test_goal_submission_inserts_no_goal_key():
+    assert "goal" not in _insert_params_for_goal_submission()
+
+
 @pytest.mark.parametrize(
     "payload",
     [{}, {"known_good_shoes": [{"brand": "Scarpa", "model": "Drago"}]}],
@@ -347,11 +366,14 @@ PARITY_PAYLOADS = [
             "discipline": "trad",
             "terrain": "crack",
             "level": "intermediate",
-            "goal_x_target": -0.5,
-            "goal_y_target": 0.25,
+            "goal": -0.5,
             "budget_cap_usd": 150.0,
         },
     ),
+    ("invalid-goal-without-discipline", {"goal": 0.5}),
+    ("invalid-goal-out-of-range", {"discipline": "gym", "goal": 2}),
+    ("invalid-caller-supplied-goal-target", {"discipline": "gym", "goal_x_target": 0.1}),
+    ("valid-discipline-plus-goal", {"discipline": "sport", "goal": 0.5}),
 ]
 
 
@@ -888,6 +910,27 @@ def test_db_post_survey_persists_a_valid_submission_with_a_disambiguated_anchor(
             with db_conn.cursor() as cur:
                 cur.execute("DELETE FROM user_survey WHERE survey_token = %s", (token,))
             db_conn.commit()
+
+
+def test_db_post_survey_stores_the_target_derived_from_goal(live_client, db_conn):
+    """Cleanup is unconditional for the same reason as the persistence test
+    above: the row is committed before the response arrives."""
+    payload = {"discipline": "trad", "terrain": "crack", "level": "elite", "goal": 0.5}
+    expected_x, _ = P.target_quadrant("trad", "crack", "elite", 0.5)
+
+    token = None
+    try:
+        resp = live_client.post("/survey", json=payload)
+        token = resp.json().get("survey_token") if resp.status_code == 201 else None
+        with db_conn.cursor() as cur:
+            cur.execute("SELECT goal_x_target FROM user_survey WHERE survey_token = %s", (token,))
+            stored = cur.fetchone()
+        assert float(stored[0]) == pytest.approx(expected_x)
+    finally:
+        if token is not None:
+            with db_conn.cursor() as cur:
+                cur.execute("DELETE FROM user_survey WHERE survey_token = %s", (token,))
+        db_conn.commit()
 
 
 def test_db_post_survey_invalid_payload_leaves_user_survey_row_count_unchanged(live_client, db_conn):

@@ -21,6 +21,13 @@ non-null handle on `user_survey`. Tokens are generated with
 `secrets.token_urlsafe` -- a CSPRNG -- never `random`, a uuid4 used as a
 secret, or a timestamp, any of which would make a token guessable.
 
+*`goal` is an input, never a column.* The comfort-vs-performance answer
+`goal` in [-1, 1] is converted to goal_x_target / goal_y_target by
+preferences.target_quadrant() in _prepare_submission(), BEFORE validation,
+and is then dropped: it is not in schema.ALLOWED_KEYS, so it can never be
+persisted (D4 allow-list). A client-supplied goal_x_target / goal_y_target is
+refused, because q* is derived server-side, not asserted by the caller.
+
 *Unknown top-level keys are refused before this module is reached*
 (schema.ALLOWED_KEYS), and `shoe_id` is refused inside every anchor entry
 (anchors.ANCHOR_ALLOWED_KEYS) -- both are D4's "derived values only, no
@@ -49,6 +56,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import anchors  # noqa: E402
+import preferences  # noqa: E402
 import schema  # noqa: E402
 
 # secrets.token_urlsafe(32) draws 32 random bytes from the OS CSPRNG and
@@ -69,6 +77,69 @@ def new_survey_token() -> str:
     return secrets.token_urlsafe(TOKEN_BYTES)
 
 
+def _prepare_submission(payload: object) -> tuple[object, list[str]]:
+    """Derive q* from `goal` and run schema.validate(). Returns (prepared
+    payload, errors): schema errors first, then target errors.
+
+    Works on a copy -- the caller's dict is never mutated. A non-mapping is
+    returned untouched with schema.validate()'s own error. Enum membership is
+    tested directly against the schema tables (never by parsing error
+    strings), and target_quadrant() is skipped when any enum fails so a bad
+    discipline is not reported twice. A bad goal therefore stays hidden while
+    terrain or level is invalid: q* cannot be derived from a broken input, and
+    the caller sees the goal error once the enums are fixed.
+    """
+    if not isinstance(payload, dict):
+        return payload, schema.validate(payload)
+
+    prepared = dict(payload)
+    goal = prepared.pop("goal", None)
+    errors = schema.validate(prepared)
+
+    supplied = [k for k in ("goal_x_target", "goal_y_target") if k in prepared]
+    if supplied:
+        errors.append(
+            f"{supplied}: derived from discipline/terrain/level/goal and must "
+            f"not be supplied by the caller"
+        )
+
+    discipline = prepared.get("discipline")
+    terrain = prepared.get("terrain")
+    level = prepared.get("level")
+    if discipline is None:
+        if goal is not None:
+            errors.append("goal requires discipline")
+    elif (
+        _is_member(discipline, schema.ENUMS["discipline"])
+        and (terrain is None or _is_member(terrain, schema.PY_ONLY_ENUMS["terrain"]))
+        and (level is None or _is_member(level, schema.PY_ONLY_ENUMS["level"]))
+    ):
+        if _is_oversized_int(goal):
+            errors.append(f"goal must be a number in [{preferences.GOAL_MIN}, {preferences.GOAL_MAX}]")
+            return prepared, errors
+        try:
+            x, y = preferences.target_quadrant(discipline, terrain, level, goal)
+        except ValueError as exc:
+            errors.append(str(exc))
+        else:
+            prepared["goal_x_target"], prepared["goal_y_target"] = x, y
+
+    return prepared, errors
+
+
+def _is_oversized_int(value: object) -> bool:
+    # Formatting an int past Python's digit limit raises a ValueError whose
+    # text names interpreter internals (sys.set_int_max_str_digits), and
+    # target_quadrant() interpolates the goal into its message. 64 bits is far
+    # beyond [-1, 1], so such a goal gets a fixed message instead.
+    return isinstance(value, int) and not isinstance(value, bool) and value.bit_length() > 64
+
+
+def _is_member(value: object, allowed: set[str]) -> bool:
+    # isinstance first: an unhashable value (a list) would make `in` raise.
+    return isinstance(value, str) and value in allowed
+
+
 def build_survey_row(
     payload: object, catalog: anchors.CatalogLookup
 ) -> tuple[dict | None, list[str]]:
@@ -78,7 +149,7 @@ def build_survey_row(
     survey_token) when `errors` is empty; otherwise `row` is None and
     `errors` names every problem found across both validation stages.
     """
-    errors = schema.validate(payload)
+    payload, errors = _prepare_submission(payload)
 
     good_raw = payload.get("known_good_shoes", []) if isinstance(payload, dict) else []
     bad_raw = payload.get("known_bad_shoes", []) if isinstance(payload, dict) else []
@@ -171,7 +242,10 @@ def main() -> int:
     # of validation needs no catalog, so it runs -- and can already reject --
     # before DATABASE_URL is even resolved. Anchor resolution still needs a
     # live catalog and is re-checked by build_survey_row() once connected.
-    schema_errors = schema.validate(payload)
+    # Only the errors are kept: build_survey_row() below must receive the
+    # ORIGINAL payload, or it would refuse the targets derived here as
+    # caller-supplied.
+    _, schema_errors = _prepare_submission(payload)
     if schema_errors:
         print(f"\n{len(schema_errors)} ERROR(S):", file=sys.stderr)
         for e in schema_errors:

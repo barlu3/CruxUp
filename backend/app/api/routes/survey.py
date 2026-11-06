@@ -1,9 +1,9 @@
 """[W7-1] POST /survey -- a THIN wrapper over the already-tested
 survey/store.py: `store.build_survey_row()` (validate + resolve anchors) and
-`store.insert_survey()` (persist). Adds NO validation of its own -- see
-store.py / schema.py / anchors.py, which already own that entirely.
-Otherwise the rules would drift from the Python layer those modules (and
-test_survey.py) already pin.
+`store.insert_survey()` (persist). The route adds nothing; build_survey_row
+validates, derives q* and resolves anchors (store.py / schema.py /
+preferences.py / anchors.py own that entirely). Otherwise the rules would
+drift from the Python layer those modules (and test_survey.py) already pin.
 
 The body is `payload: Any = Depends(json_body)` (api/deps.py) and deliberately carries
 no pydantic model: a model would itself be a second layer of validation,

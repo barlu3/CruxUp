@@ -1,10 +1,10 @@
 # Climbing Shoe Recommender — Project Plan & Agent Task Spec
 
-**Version:** 3.3
+**Version:** 3.4
 **Status:** Active. Supersedes v2.0 (2026-05-25).
-**Last updated:** 2026-10-02
-**Change basis:** v3.0 was the feasibility review of all 22 backlog tasks (§2.1). v3.1 adds D11 and D12, records what has actually been built (§2.0), and folds in two findings measured from the first live collection run — the mention-attribution problem (W1-3) and the $N_{\min}$ reachability problem (W2-3). **v3.2** closes a structural gap found while sequencing W6-1: the HTTP layer (**W7**) and the frontend build foundation (**W6-0**) were assumed by the scaffold but carried no task ID, so the plan showed W6-1 as startable when two prerequisites did not exist. See §15.
-**Progress:** 9 of 41 tasks complete (2 deferred). **v3.3** resolves the two §13 decisions that blocked the results page: a v0 scorer and $\mathbf{q}^*$ wiring, adding four tasks. See §15. W1-0b is **not** complete: its collection path failed the YouTube terms review (§10.2). See §2.0.
+**Last updated:** 2026-11-05
+**Change basis:** v3.0 was the feasibility review of all 22 backlog tasks (§2.1). v3.1 adds D11 and D12, records what has actually been built (§2.0), and folds in two findings measured from the first live collection run — the mention-attribution problem (W1-3) and the $N_{\min}$ reachability problem (W2-3). **v3.2** closes a structural gap found while sequencing W6-1: the HTTP layer (**W7**) and the frontend build foundation (**W6-0**) were assumed by the scaffold but carried no task ID, so the plan showed W6-1 as startable when two prerequisites did not exist. **v3.4** records the first part of W4'-4a (the server derives $\mathbf{q}^*$) and MSRP for 23 of the 30 calibration shoes. See §15.
+**Progress:** 9 of 41 tasks complete (2 deferred). **v3.3** resolves the two §13 decisions that blocked the results page: a v0 scorer and $\mathbf{q}^*$ wiring, adding four tasks. See §15. W1-0b is **not** complete: its collection path failed the YouTube terms review (§10.2). See §2.0. **W4'-4a and W5-1d are partial** (2026-11-05) and are not counted.
 
 ---
 
@@ -70,10 +70,12 @@ Audited against files on disk and verified runs, not against memory.
 | W5-1a hand-place 30 shoes | `shoes.yaml`, seeded to Postgres: 30 shoes, 71 aliases. |
 | W5-1b spec→prior model | `priors.py`. LOOCV MAE x 0.139 / y 0.113, 87% quadrant agreement. |
 | W4'-1 survey capture (2026-09-17) | `survey/{schema,anchors,store}.py`. 146 tests; anchors resolve against the seeded catalog and reject unknown *and ambiguous* pairs; no DDL added. Reviewed 2026-09-20 (database / python / security). |
-| W4'-2 preferences → $\mathbf{q}^*$ (2026-09-23) | `survey/preferences.py`, a pure stdlib function. Every discipline lands in its §3 quadrant, and $\mathbf{q}^*$ stays inside $[-1,1]^2$ and off both axes for all 600 enum combinations (1334 tests). Reviewed (python). **Not yet wired into capture** — see §13. |
-| W7-1 API: `POST /survey` + `GET /shoes` (2026-09-25) | `main.py`, `api/deps.py`, `api/routes/{survey,shoes}.py`; 57 tests. `POST /survey` adds no validation of its own: its 422 list equals `build_survey_row()`'s, and a test pins that FastAPI validates nothing on the route. A valid submission returns only `survey_token`. `GET /shoes` returns `version`/`gender`, and every item round-trips to its own id. Reviewed (python, 2 rounds; security). **$\mathbf{q}^*$ still not wired** — see §13. |
+| W4'-2 preferences → $\mathbf{q}^*$ (2026-09-23) | `survey/preferences.py`, a pure stdlib function. Every discipline lands in its §3 quadrant, and $\mathbf{q}^*$ stays inside $[-1,1]^2$ and off both axes for all 600 enum combinations (1334 tests). Reviewed (python). **Wired into capture by W4'-4a** (2026-11-05) — see §13. |
+| W7-1 API: `POST /survey` + `GET /shoes` (2026-09-25) | `main.py`, `api/deps.py`, `api/routes/{survey,shoes}.py`; 57 tests. `POST /survey` adds no validation of its own: its 422 list equals `build_survey_row()`'s, and a test pins that FastAPI validates nothing on the route. A valid submission returns only `survey_token`. `GET /shoes` returns `version`/`gender`, and every item round-trips to its own id. Reviewed (python, 2 rounds; security). **$\mathbf{q}^*$ wired by W4'-4a** (2026-11-05) — see §13. |
 | W6-1 questionnaire UI (2026-10-01) | `/survey`: fit, preference and budget inputs, and two catalogue-backed anchor pickers. Two Next.js route handlers relay to the API server-side. Verified against the real API and Postgres by keyboard alone: Instinct VSR and the base Solution resolve to their own `shoe_id`; an anchors-only answer is stored with every fit field NULL; the browser never calls the API. 127 Vitest + 13 Playwright tests, with axe WCAG 2 A/AA scans in six states. Reviewed (typescript; then react, a11y — WCAG 2.2 AA — and security, whose 2 HIGH a11y findings are fixed). **No goal input** — see §13. |
 | W6-0 frontend foundation (2026-10-01) | `layout.tsx`, `page.tsx`, a committed `package-lock.json`, Vitest + React Testing Library, Playwright, and a CI `frontend` job. `npm run build` prerenders all four routes; 2 Vitest and 2 Playwright tests pass, the latter against both `next dev` and the production build; lint and type-check are clean. `next` was raised 16.2.4 → 16.3.8 to clear critical advisories (`npm audit`: 0). Reviewed (typescript). |
+| W4'-4a (part) server derives $\mathbf{q}^*$ (2026-11-05) | **Partial, not counted in the 9.** `store._prepare_submission()`, called by `build_survey_row()`, derives `goal_x_target`/`goal_y_target` with `target_quadrant(discipline, terrain, level, goal)`. A caller-supplied target is refused, even as null; the raw `goal` is never persisted. No DDL, and `POST /survey` code is unchanged, so the W7-1 parity tests hold. Not yet done from the task's spec: `schema.DERIVED_FIELDS`, `preferences.MAPPING_VERSION` with its fingerprint test, and the per-discipline sweep test. No client sends `goal` until W6-4. Reviewed (python, 2 rounds; security). |
+| W5-1d (part) MSRP for the 30 calibration shoes (2026-11-05) | **Partial, not counted in the 9.** `shoes.yaml`: 23 of 30 priced (19 from the brand's US site, 4 from a list price at least two retailers agree on); 7 null (Anasazi Pro, Mythos, Maestro Mid, Astroman, Katana Velcro, Elektra, Moccasym). `validate.py` warns 7/30; `validate.py --require-msrp` fails by design until those seven are resolved. `test_priors.py` pins `msrp_usd` to NUMERIC(7,2). Spot-checks outstanding (§13). |
 
 **Built but not on the backlog** — support the above, worth naming so they are not re-scoped later:
 `validate.py` (catalogue invariants + the `--require-msrp` budget-gate guard), `config.py` (`.env` loading), `SETUP.md` (local setup, verified end to end), 54 tests.
@@ -86,12 +88,12 @@ Audited against files on disk and verified runs, not against memory.
 
 **Not started:** everything else. The thin slice (D7) now has its data layer, survey capture, the $\mathbf{q}^*$ target function, an HTTP surface for capture and the catalog, and the questionnaire (W6-1). It has no scorer and no results page. `api/routes/recommend.py`, `recommend/`, `nlp/` and `eval/` are still stubs.
 
-**Nearest unblocks (refreshed 2026-10-02, v3.3):** both §13 decisions are now made. The path to a shippable slice is **W4'-4a → W3-1a → W7-2 → W6-3**:
-- **W4'-4a** (the server derives $\mathbf{q}^*$) and **W3-1** (spreadsheet scoring plus the climber check) can start now. W3-1's climber verdict is the go/no-go gate for W3-1a.
+**Nearest unblocks (refreshed 2026-11-05, v3.4):** both §13 decisions are made. The path to a shippable slice is **W4'-4a → W3-1a → W7-2 → W6-3**:
+- **W4'-4a** is partly done: the server derives $\mathbf{q}^*$; `DERIVED_FIELDS`, `MAPPING_VERSION` and the sweep test remain. **W3-1** (spreadsheet scoring plus the climber check) can start now. W3-1's climber verdict is the go/no-go gate for W3-1a.
 - **W6-2** (quadrant) can start now and runs in parallel.
 - **W4'-4b** (the `goal` column migration) and **W6-4** (the goal question) follow W4'-4a, off the critical path.
 
-Until W6-4 lands, the questionnaire collects discipline, terrain and level but not the comfort-vs-performance goal; `target_quadrant()` accepts that. W1-0a remains one hour of paperwork gating a 2–4 week queue. W5-1c/W5-1d are mechanical and gate the §7.6 budget gate.
+Until W6-4 lands, the questionnaire collects discipline, terrain and level but not the comfort-vs-performance goal; `target_quadrant()` accepts that. W1-0a remains one hour of paperwork gating a 2–4 week queue. W5-1c/W5-1d are mechanical and gate the §7.6 budget gate; W5-1d has started with the 30 calibration shoes (23 priced, 2026-11-05), and its 7 nulls and the §13 spot-checks stay open.
 
 ### 2.1 Review disposition (2026-09-07)
 
@@ -632,7 +634,7 @@ The collector must therefore be written source-agnostic from the first commit �
 | ~~W5-1a~~ | ~~Hand-place **30** shoes (calibration set)~~ | W0-1a | 1w | **DONE.** Five §3 anchors included. This set exists to fit and validate `priors.py`, not to be the catalog. |
 | ~~W5-1b~~ | ~~Fit spec→prior model (`priors.py`)~~ | W5-1a | 2d | **DONE.** LOOCV MAE x 0.139 / y 0.113, 87% quadrant agreement. Refit with `priors.py --refit`. |
 | W5-1c | Expand catalog to **~100** shoes | W5-1b | 1–2w | **D12.** Spec lookup only — `derive_prior()` supplies the placement, so no per-shoe judgement. Mark `prior_source: spec`. |
-| W5-1d | Source MSRP for all catalog shoes | W5-1c | 1w | Now the real budget item: scales linearly with catalog size. `validate.py --require-msrp` blocks the §7.6 budget gate until done. |
+| W5-1d | Source MSRP for all catalog shoes | W5-1c | 1w | **PARTIAL 2026-11-05: 23/30 calibration shoes priced.** 19 from the brand's US site; 4 (Testarossa, Altura, Aragon, Hiangle) from a list price at least two retailers agree on. 7 null, each with its reason in a `# msrp:` comment in `shoes.yaml` (§13). The task stays open: it covers the ~100-shoe catalogue (D12), and only the 30 calibration shoes are sourced. Now the real budget item: scales linearly with catalog size. `validate.py --require-msrp` still fails on the 7 nulls and blocks the §7.6 budget gate. **Sourcing order decided 2026-11-05:** the 30 calibration shoes first, ahead of the rest of the slice, because 0 of 30 carry MSRP today. |
 | W5-2 | Lifecycle handling (discontinued/revised/version) | W5-1c | — | **Deferred.** At 30 shoes a discontinued shoe is a manual edit. Revisit past ~50. |
 
 ### W6 — Frontend (moved earlier)
@@ -681,6 +683,7 @@ gantt
   API survey + shoes (W7-1)        :done, p1b2, after p1b, 4d
   Frontend foundation (W6-0)       :done, p1b3, 2026-10-01, 1d
   Questionnaire UI (W6-1)          :done, p1c, 2026-10-01, 1d
+  MSRP for 30 shoes (W5-1d, part)  :done, p1m, 2026-11-05, 2d
   Static quadrant (W6-2)           :p1d, after p1c, 5d
   Results + confidence (W6-3)      :p1e, after p1d p1d2, 6d
   SLICE SHIPS                      :milestone, m1, after p1e, 0d
@@ -745,12 +748,20 @@ Durations assume a solo builder. The v2 note "estimates for a small team" no lon
   - W7-1's dependencies do not yet include W4'-2.
   - **Update 2026-09-25:** W7-1 shipped without this. Its request limited `POST /survey` to wrapping `build_survey_row()` / `insert_survey()` with no validation of its own, and option (a) would add a conversion step, plus `target_quadrant()`'s own checks, to the endpoint. The decision now gates **W6-1**, whose questionnaire must know whether to send a raw answer or `goal_x_target` / `goal_y_target`.
   - **Update 2026-10-01:** W6-1 shipped **without a goal input**, so the decision does not block the questionnaire. When it is made, the form gains one field: option (a) sends a raw `goal`; option (b) does too, plus a migration. Until then, stored surveys carry discipline, terrain and level, from which `target_quadrant()` can derive $\mathbf{q}^*$ without the goal nudge.
+  - **Update 2026-11-05:** option (a) is implemented as the first part of **W4'-4a**, in `store.build_survey_row()` rather than the route, so the W7-1 parity test that pins `POST /survey`'s 422 list to `build_survey_row()`'s still holds. A raw `goal` in [-1, 1] is accepted and dropped before `schema.validate()`, so it is never persisted; a caller-supplied `goal_x_target` / `goal_y_target` is refused, even as null. No client sends `goal` until W6-4, so until then $\mathbf{q}^*$ comes from discipline, terrain and level.
 - **New open items from the v3.3 decisions (2026-10-02):**
   - **Fit^cat has no inputs.** The catalogue has no last width, volume or heel fields, and no task sources them. W3-3 v1 therefore covers Fit^anchor (by last family), Budget and the size gate only.
   - **Re-scoring versus `UNIQUE (survey_id, shoe_id)`.** Results are write-once, so a scorer upgrade cannot re-rank a survey that already has rows. W3-3 decides: add `scorer_version` to the unique key in an additive migration, or never re-score.
   - **Cookie lifetime.** It should cover the §9.4 follow-up window. To be decided in W6-3.
   - **G-centroid fallback declined.** A survey without discipline gets `no_style_target`; there is no invented target.
   - **Recommendation rows do not record the placement used.** If catalogue placements change (D12, NLP), old style scores cannot be re-derived. Low risk until placements move.
+- **MSRP for the 30 calibration shoes: open spot-checks and the null-price rule (W5-1d, recorded 2026-11-05).** 23 of 30 are priced; 7 are null (Anasazi Pro, Mythos, Maestro Mid, Astroman, Katana Velcro, Elektra, Moccasym). `shoes.yaml` carries the source and confidence of each value in a `# msrp:` comment. Human spot-checks still outstanding:
+  - **Katana Velcro identity.** The brand site lists two velcro Katanas, at 209 and 179. The row stays null until one is confirmed.
+  - **Moccasym identity.** The original is replaced by NIAD Moccasym (125); it is unclear which product the row means.
+  - **Anasazi Pro and Hiangle availability on adidas.com/us.** Confirm both are still sold there. adidas.com/us was not reachable when the rows were sourced. Anasazi Pro is null because the director rejected gear-database and resale sources; Hiangle is a medium-confidence retailer price.
+  - **Testarossa, 199 vs 219.** The sources disagree; the row records 219, the medium-confidence value.
+  - **Defy gender.** The row is `mens`, but Evolv now sells only a unisex Defy, at 119. The price is applied; the gender is unchanged.
+  - **Null-price rule (requirement for W7-2, shown by W6-3).** A shoe with `msrp_usd` null is shown as "price unknown". It is never silently treated as within budget. The §7.6 price gate `1[price ≤ cap]` cannot evaluate a null, so the scorer needs an explicit branch for it, and the flag must reach the response so the results page can show it.
 - **Learned ranking:** replace the weighted scorer once online feedback labels exist (§9.4).
 - **`trainer.py` distillation:** LLM → small classifier when volume/cost justify (W2-5).
 - **Catalog growth past 30:** triggers W5-2 (lifecycle) and raises the long-tail cold-start problem again.
@@ -767,6 +778,14 @@ Durations assume a solo builder. The v2 note "estimates for a small team" no lon
 ---
 
 ## 15. Changelog
+
+**v3.4 (2026-11-05)** — the first part of W4'-4a, and MSRP for the 30 calibration shoes. Both are partial; the progress count is unchanged at 9 of 41.
+- **W4'-4a partial:** the server derives $\mathbf{q}^*$ in `store.build_survey_row()` and refuses caller-supplied targets (§13 option a). Still to do: `schema.DERIVED_FIELDS`, `preferences.MAPPING_VERSION` with its fingerprint test, and the sweep test. The W4'-2 and W7-1 rows no longer say $\mathbf{q}^*$ is unwired.
+- **W5-1d partial:** 23 of 30 calibration shoes priced. 19 are high-confidence (brand US site); 4 are medium (Testarossa, Altura, Aragon, Hiangle, from list prices at least two retailers agree on). 7 are null (Anasazi Pro, Mythos, Maestro Mid, Astroman, Katana Velcro, Elektra, Moccasym), each with its reason in `shoes.yaml`. `validate.py` warns on 7/30; `--require-msrp` fails by design until the nulls are resolved.
+- **Tests:** a new test pins `msrp_usd` to NUMERIC(7,2). Backend suite 1687 passed with a database; 1672 passed and 15 skipped without one.
+- **§2.0:** rows for W4'-4a and W5-1d, both marked partial and not counted.
+- **§12 Gantt:** the MSRP task is marked `:done`.
+- **§13:** the $\mathbf{q}^*$ update, the MSRP spot-check list, and the null-price rule as a requirement for W7-2.
 
 **v3.3 (2026-10-02)** — resolves the two §13 decisions blocking the results page, with the user's sign-off. Analysis was done by planner, architect and database-reviewer agents.
 - **$\mathbf{q}^*$ has one author: the survey layer at capture.** New **W4'-4a** (no migration; clients may no longer send $\mathbf{q}^*$) and **W4'-4b** (migration `0002_survey_target`: raw `goal`, mapping version, the missing `heel_fit`/`terrain`/`level` CHECKs, and consistency CHECKs). New **W6-4** adds the goal question.

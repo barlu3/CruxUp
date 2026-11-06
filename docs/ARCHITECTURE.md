@@ -23,7 +23,7 @@ A reference for the structure, data model and design of the CruxUp climbing shoe
 - **Build state:**
   - **Implemented:** the product database schema, the shoe catalogue and its validator, a spec-to-placement model, the catalogue loader, environment configuration, a source-agnostic corpus collector, survey capture (§4.7), preference→target (`q*`) derivation (§4.8), an HTTP API with `POST /survey` and `GET /shoes` (§4.9), and the frontend shell with its component and end-to-end test harness (§4.10).
   - **Also implemented:** the questionnaire at `/survey` and the two Next.js route handlers that relay it to the API server-side (§4.11).
-  - **Not implemented:** `POST /recommend`, the recommendation scorer, NLP extraction and aggregation, evaluation, and the results page. These exist as documented stubs (§7). The pure `q*` function (§4.8) is still not called by survey capture, so the questionnaire does not ask for the comfort-vs-performance goal (§12).
+  - **Not implemented:** `POST /recommend`, the recommendation scorer, NLP extraction and aggregation, evaluation, and the results page. These exist as documented stubs (§7). The pure `q*` function (§4.8) is called by survey capture (W4'-4a, part), but the questionnaire does not yet ask for the comfort-vs-performance goal (W6-4, §12).
 - **Current binding constraint:** **no corpus source is cleared.** YouTube collection failed a terms review, Reddit access is pending, and forum terms are unreviewed (`timeline.md` §10.2; D11 reopened). The planned first release (D7) is designed to work **without** a corpus, on hand- and spec-derived placements.
 
 ---
@@ -86,7 +86,7 @@ flowchart LR
   ANC --> STO
   ANC --> SHOE & ALIAS
   STO --> SURV
-  PREF -.->|"q*, not yet wired"| STO
+  PREF -->|"q*"| STO
   MAIN --> RSURV
   MAIN --> RSHOE
   DEPS --> RSURV
@@ -161,7 +161,7 @@ flowchart LR
 
 ### 4.1 Catalogue — `backend/app/catalog/data/shoes.yaml`
 - **Shape:** a mapping root with a `shoes` list. Each entry has `brand`, `model`, optional `version`, `gender`, `last_shape`, `downturn`, `stiffness_spec`, `closure`, `rubber`, `msrp_usd`, `quadrant_x_prior`, `quadrant_y_prior`, `prior_source`, `aliases`, and optional `anchor` and `note`.
-- **Contents:** 30 shoes and 71 aliases, all `prior_source: hand`; `msrp_usd` is null on every row.
+- **Contents:** 30 shoes and 71 aliases, all `prior_source: hand`. `msrp_usd` is set on 23 rows (2026-11-05): 19 from the brand's US site and 4 medium-confidence list prices (Testarossa, Altura, Aragon, Hiangle). It is null on 7 (Anasazi Pro, Mythos, Maestro Mid, Astroman, Katana Velcro, Elektra, Moccasym). Each value's source and confidence sit in a `# msrp:` comment above it. A null is an unresolved price, not a zero, so `validate.py --require-msrp` fails by design until the seven are resolved.
 - **Anchors:** five shoes marked `anchor: true` are calibration ground truth for the quadrant — La Sportiva Solution (Q1), La Sportiva TC Pro (Q2), Evolv Defy (Q3), Scarpa Drago (Q4), Scarpa Instinct VSR (Q4).
 - **Identity:** `(brand, model, version, gender)`. A `version` that changes the last is a separate shoe — the Solution (Q1) and Solution Comp (Q4) are separate rows in different quadrants.
 - `anchor` and `note` are metadata and documentation; they are not persisted.
@@ -177,7 +177,7 @@ flowchart LR
   - priors lie in `[-1,1]` and not exactly on an axis
   - `(brand, model, version, gender)` is unique
   - aliases are unique across the whole catalogue, case-insensitively
-- **Budget-gate guard:** by default null prices only warn; `--require-msrp` makes them errors. This check must pass before any budget filtering relies on prices.
+- **Budget-gate guard:** by default null prices only warn; `--require-msrp` makes them errors. This check must pass before any budget filtering relies on prices. Today it warns 7/30 and `--require-msrp` fails on those seven (§4.1).
 
 ### 4.3 Placement model — `backend/app/catalog/priors.py`
 - **Interface:** `derive_prior(shoe: dict) -> (x, y)`; `refit(shoes) -> dict` (weights plus LOOCV scores); `quadrant(x, y)`; the `PriorSource` enum (`CORPUS`, `HAND`, `SPEC`); CLI `python3 backend/app/catalog/priors.py [--refit] [--catalog PATH]`.
@@ -428,9 +428,10 @@ together: the discipline, terrain and level keys, and the output precision
 #### Not yet modelled
 - **Stiffness preference** and **downsizing/pain tolerance** are listed in §7.5
   but have no mapping and no `user_survey` column.
-- **The function is not called anywhere.** `store.py` stores `goal_x_target` /
-  `goal_y_target` exactly as supplied. The submission allow-list has no key for
-  the raw `goal` slider, and no column stores it. See §12.
+- **The raw `goal` is not stored.** `store._prepare_submission()` (called by
+  `build_survey_row()`) derives `goal_x_target` / `goal_y_target` from it at
+  capture and then drops it; no column holds it or a mapping version (W4'-4b).
+  See §12.
 
 ### 4.9 HTTP API — `backend/app/main.py`, `backend/app/api/`
 
@@ -510,8 +511,9 @@ has two endpoints; `POST /recommend` belongs to W7-2 and is not routed.
 
   The Next.js route handlers are the internet-facing layer and own these
   controls (§4.11, §12).
-- **Not yet wired:** `preferences.target_quadrant()`. `POST /survey` stores
-  `goal_x_target` / `goal_y_target` as submitted (§12).
+- **`q*` is derived in the store, not the route.** `build_survey_row()` calls
+  `preferences.target_quadrant()` and refuses a caller-supplied
+  `goal_x_target` / `goal_y_target`, so the route still adds no validation (§12).
 
 ### 4.10 Frontend shell and test harness — `frontend/`
 
@@ -609,7 +611,7 @@ The questionnaire that captures a survey (W6-1). The browser talks only to the a
 - **Payload:**
   - Unset answers are left out entirely, never sent as `null` or `""`. An answer naming only shoes is therefore sent as just the anchor list(s), which the API accepts with every fit and preference field NULL (`timeline.md` §7.1).
   - Numbers are sent as JSON numbers.
-- **Not asked:** the comfort-vs-performance goal and the derived `goal_x_target`/`goal_y_target`. How that answer should reach `q*` is still undecided (§12).
+- **Not asked:** the comfort-vs-performance goal (W6-4). Without it the server derives `goal_x_target`/`goal_y_target` from discipline, terrain and level alone (§12).
 - **Outcomes:**
   - 201 replaces the form with a confirmation (`role="status"`), and focus moves to its heading. The survey token is neither displayed nor stored.
   - 422 opens a `role="alert"` summary headed "Please check your answers.", moves focus to it, and keeps the answers. Each message is shown as plain text, never as markup:
@@ -800,11 +802,13 @@ chosen shoe as `{brand, model, version, gender}`.
    `--dry-run` exercises the whole path, including JSONB adaptation, then rolls back.
 5. The API returns only the `survey_token` (201). It is the sole handle on the row.
 
-`goal_x_target` / `goal_y_target` are currently stored exactly as submitted. The
-path does not yet call `preferences.target_quadrant()` (§4.8) to derive them.
+`goal_x_target` / `goal_y_target` are never taken from the caller:
+`build_survey_row()` derives them with `preferences.target_quadrant()` (§4.8)
+from discipline, terrain, level and an optional raw `goal`, which is then
+dropped. A caller-supplied target is a 422.
 
 ### 6.5 Recommendation (planned)
-- A survey's preference answers yield a target `q*`. The derivation itself is implemented (§4.8); connecting it to capture and to scoring is not.
+- A survey's preference answers yield a target `q*`. The derivation is implemented (§4.8) and runs at capture; connecting it to scoring is not.
 - The scorer combines Fit, Style and Budget, gates on `size_exists` and price, and ranks the results.
 - Each result carries a confidence driven by `prior_source`, mention count and agreement, and is written as a `recommendation` row under the active `scorer_version`.
 - Apart from the `q*` function, none of this is implemented.
@@ -850,7 +854,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - **Source-agnostic collection** (D11). No single data source is load-bearing; sources are pluggable adapters that may be unavailable.
 - **Non-commercial and advertising-free** (D11). The product carries no advertising. Using free API tiers under non-commercial terms constrains future monetisation for as long as that data is in use.
 - **Privacy by construction** (D4). No images, no biometrics, no personal identifiers; author identity exists only as a keyed pseudonym.
-- **`q*` has a single author** (decided 2026-10-02, `timeline.md` v3.3). The survey layer computes the user's target when a survey is saved and stores it with the raw answers and a mapping version. Clients cannot supply it, and the scorer only reads it. One author means a survey's target never shifts silently when the mapping constants change, and a stored target can always be audited against its inputs. *(Planned: W4'-4a and W4'-4b.)*
+- **`q*` has a single author** (decided 2026-10-02, `timeline.md` v3.3). The survey layer computes the user's target when a survey is saved and stores it with the raw answers and a mapping version. Clients cannot supply it, and the scorer only reads it. One author means a survey's target never shifts silently when the mapping constants change, and a stored target can always be audited against its inputs. *(Partly built: capture derives `q*` and refuses client targets (W4'-4a, part); the raw answer and mapping version wait for the rest of W4'-4a and W4'-4b.)*
 - **The first results are a style match** (decided 2026-10-02). The v0 scorer ranks by quadrant proximity only, and labels fit and budget as not assessed rather than inventing them. Results are written once, so later feedback (§9.4) stays tied to what each user actually saw. *(Planned: W3-1a, W7-2, W6-3.)*
 - **The browser never reaches the service layer directly** (decided 2026-09-21, `timeline.md` §6). The data path is browser → Next.js route handler → FastAPI on localhost → PostgreSQL. Both ends are implemented: FastAPI without CORS middleware (§4.9), and two Next.js route handlers that relay server-side (§4.11). The frontend talks only to its own origin, so there is no CORS surface and the backend is not addressable from the client. The alternative — querying PostgreSQL from TypeScript — was rejected because it would duplicate the anchor resolution, allow-lists and domain guards that already exist and are tested in Python, leaving two validators to keep in step.
 
@@ -1118,36 +1122,26 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   and `shoe_unique_identity` index the raw columns, so identity resolution is a
   sequential scan. Immaterial at present size; an expression index would be needed
   well past D12.
-- **`q*` is not connected to capture.** `survey/preferences.py` is implemented
-  and tested, but no caller uses it. Two further gaps have to be closed before
-  it is:
-  - The submission allow-list (`schema.ALLOWED_KEYS`) has no key for the raw
-    comfort-vs-performance `goal`, so a payload carrying one is rejected today.
-    The endpoint would have to convert `goal` to `goal_x_target` /
-    `goal_y_target` before validation, or the schema would have to accept it.
-  - `user_survey` stores the derived `q*` but not the raw `goal`. A stored
-    target therefore cannot be recomputed exactly if the mapping constants
-    change later.
-
-  `POST /survey` (W7-1) was delivered without this wiring, and the
-  questionnaire (§4.11) does not ask for the goal. **The design is now decided
-  (`timeline.md` v3.3, §13) but not built:**
-  - `q*` gets a single author: the survey layer computes it at capture (W4'-4a).
-  - Clients may no longer send `goal_x_target` / `goal_y_target`.
-  - Migration `0002_survey_target` (W4'-4b) adds the raw `goal`, a mapping
-    version, and CHECK constraints that also cover `heel_fit`, `terrain` and
+- **`q*` is derived at capture, but the raw answer is not stored.** The first
+  part of W4'-4a (2026-11-05) computes `q*` in `store.build_survey_row()`.
+  Clients may no longer send `goal_x_target` / `goal_y_target`; a raw `goal` is
+  accepted, converted and dropped. Still open:
+  - `user_survey` stores the derived `q*` but neither the raw `goal` nor a
+    mapping version, so a stored target cannot be recomputed exactly if the
+    mapping constants change. Migration `0002_survey_target` (W4'-4b) adds
+    both, plus CHECK constraints that also cover `heel_fit`, `terrain` and
     `level`.
+  - The rest of W4'-4a: `schema.DERIVED_FIELDS`, `preferences.MAPPING_VERSION`
+    with its fingerprint test, and the per-discipline sweep test.
+  - The questionnaire (§4.11) does not ask for the goal until W6-4.
   - The scorer will read the stored `q*` and never derive it.
-  - Until W4'-4a lands, every stored survey has a NULL `q*`.
-  - Today a client can still store a `q*` that contradicts its own
-    discipline: `test_api.py` stores a trad survey (Q2) with a Q3 target.
 - **Two quadrant classifiers.** `catalog/priors.quadrant()` and
   `survey/preferences.quadrant_of()` both label points on the same plane. They
   differ on axis points: the first returns `ON-AXIS`, the second raises. They
   are kept apart because `preferences.py` must not depend on PyYAML.
 - **Catalogue size band is stale.** `validate.py` enforces 25–30 shoes, reflecting the superseded D6; the target is now ~100 (D12). It must be raised before the catalogue expands.
 - **Refit input filtering in tests.** `test_priors.py` refits on every shoe with coordinates. Once `prior_source: spec` rows exist, it must filter to `hand` rows, as the `--refit` CLI already does, or the model would be fitted partly on its own output.
-- **No prices.** `msrp_usd` is null on every catalogue row, so budget filtering cannot be relied on (`validate.py --require-msrp` fails).
+- **Partial prices.** `msrp_usd` is set on 23 of 30 catalogue rows and null on 7 (§4.1), so budget filtering cannot yet be relied on: `validate.py --require-msrp` fails on those seven. The outstanding spot-checks are listed in `timeline.md` §13, and the W5-1d row stays open until the catalogue expands.
 - **Unused declared dependencies:** 7 of 15 packages are declared ahead of use (§10.1).
 - **Unpinned dependencies.** `backend/requirements.txt` pins no versions, so CI
   installs the newest releases. Running the suite against them surfaced two
@@ -1193,18 +1187,19 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 These commands re-check the mechanically verifiable claims in this document:
 
 ```bash
-python3 -m pytest backend/tests/ -q                              # 1610 passed (database reachable)
+python3 -m pytest backend/tests/ -q                              # 1687 passed with a database reachable
 python3 -m pytest backend/tests/test_collector.py -q             # 25 passed
-python3 -m pytest backend/tests/test_priors.py -q                # 39 passed
-python3 -m pytest backend/tests/test_survey.py -q                # 155 passed
+python3 -m pytest backend/tests/test_priors.py -q                # 86 passed
+python3 -m pytest backend/tests/test_survey.py -q                # 168 passed, 10 skipped without a database (178 with one)
 python3 -m pytest backend/tests/test_preferences.py -q           # 1334 passed
-python3 -m pytest backend/tests/test_api.py -q                   # 57 passed (4 skip without a database)
+python3 -m pytest backend/tests/test_api.py -q                   # 59 passed, 5 skipped without a database (64 with one)
 DATABASE_URL=postgresql://localhost:1/nope \
-  python3 -m pytest backend/tests/ -q                            # 1596 passed, 14 skipped — the suite is hermetic
+  python3 -m pytest backend/tests/ -q                            # 1672 passed, 15 skipped — the suite is hermetic
 (cd backend && uvicorn app.main:app --port 8000) &                # then, in another shell:
 curl -s localhost:8000/shoes | python3 -c "import json,sys; print(sorted(json.load(sys.stdin)[0]))"   # ['brand', 'gender', 'id', 'model', 'version']
 curl -s -H 'content-type: application/json' -d '{"email":"x"}' localhost:8000/survey   # 422 {"errors": ["unknown key(s) ['email']: ..."]}
 python3 backend/app/catalog/validate.py | tail -1                # catalogue valid
+python3 backend/app/catalog/validate.py --require-msrp; echo $?  # exit 1: 7 of 30 shoes have null msrp_usd
 python3 backend/app/catalog/priors.py --refit | head -2          # LOOCV  MAE x = 0.139  MAE y = 0.113  agreement = 87%
 psql -d <db> -f backend/app/db/migrations/0001_init.sql          # applies clean on an empty database
 psql -d <db> -f backend/app/db/migrations/0001_init_down.sql     # reverses to zero tables
