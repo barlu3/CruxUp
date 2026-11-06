@@ -3,13 +3,14 @@
 CruxUp is a climbing shoe recommender: a Python backend (FastAPI, Postgres) and
 a Next.js frontend. The plan of record is [`timeline.md`](timeline.md).
 
-Current state: **W7-2 complete.** The schema, catalogue, prior model, corpus
-collector and survey capture exist. The API serves `POST /survey`, `GET /shoes`,
-`GET /quadrant` and `POST /recommend` (§7); `POST /recommend` ranks the catalogue
-for one survey with the v0 scorer. The questionnaire at `/survey` and the
-quadrant at `/quadrant` reach the API through Next.js route handlers (§8).
-`/results` is still a placeholder, and the route handlers do not forward
-`/recommend` yet (both W6-3), so the browser cannot show ranked results.
+Current state: **W6-3 complete; the thin slice is code-complete but not deployed.**
+The schema, catalogue, prior model, corpus collector and survey capture exist.
+The API serves `POST /survey`, `GET /shoes`, `GET /quadrant` and `POST /recommend`
+(§7); `POST /recommend` ranks the catalogue for one survey with the v0 scorer.
+The questionnaire at `/survey`, the quadrant at `/quadrant` and the ranked
+results at `/results` reach the API through Next.js route handlers (§8). The
+survey token is kept in the tab's `sessionStorage` (`timeline.md` §13). Deploying
+needs an edge rate limit on `POST /api/survey` and `POST /api/recommend`.
 
 ---
 
@@ -154,7 +155,7 @@ prints what is wrong and touches nothing.
 ## 6. Verify
 
 ```bash
-python3 -m pytest backend/tests/ -q        # 2009 passed with a seeded database; 1983 passed, 26 skipped without one
+python3 -m pytest backend/tests/ -q        # 2017 passed with a seeded database; 1991 passed, 26 skipped without one
 python3 backend/app/catalog/validate.py    # catalogue invariants
 python3 backend/app/catalog/priors.py      # spec model vs hand placements
 ```
@@ -280,7 +281,10 @@ API's `GET /quadrant`, so it needs the API running against a seeded database
 (§5); without one, the page shows an error with **Try again**. The end-to-end
 tests serve it from `e2e/fixtures/quadrant.json` instead.
 
-`/results` is still a placeholder (W6-3).
+`/results` shows the ranked shoes for the survey just submitted. The token is
+in this tab's `sessionStorage`, so a new tab cannot reopen the results. The mock
+API answers `POST /recommend` from `e2e/fixtures/recommend.json`; the token
+`e2e-expired-token` gets a 404.
 
 > **Running `next dev` from a coding agent** (Claude Code, Cursor and similar)
 > makes Next.js 16.3 write `AGENTS.md` and `CLAUDE.md` into `frontend/`, or
