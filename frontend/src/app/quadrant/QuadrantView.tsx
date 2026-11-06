@@ -1,0 +1,72 @@
+"use client";
+
+import { useEffect, useId, useState } from "react";
+
+import { QuadrantChart } from "../components/QuadrantChart";
+import { QuadrantTable } from "../components/QuadrantTable";
+import { fetchQuadrant } from "../lib/api";
+import type { QuadrantShoe } from "../lib/types";
+
+type ViewState =
+  | { status: "loading" }
+  | { status: "ready"; shoes: QuadrantShoe[] }
+  | { status: "failed" };
+
+export function QuadrantView() {
+  const chartHeadingId = useId();
+  const tableHeadingId = useId();
+  const [state, setState] = useState<ViewState>({ status: "loading" });
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchQuadrant(controller.signal).then(
+      (shoes) => {
+        if (!controller.signal.aborted) setState({ status: "ready", shoes });
+      },
+      () => {
+        // An abort means we unmounted or retried; never show it as an error.
+        if (!controller.signal.aborted) setState({ status: "failed" });
+      },
+    );
+    return () => controller.abort();
+  }, [attempt]);
+
+  function handleRetry() {
+    setState({ status: "loading" });
+    setAttempt((previous) => previous + 1);
+  }
+
+  return (
+    <div className="mt-8 flex flex-col gap-8">
+      {/* Mounted throughout so assistive tech keeps observing the live region. */}
+      <p role="status" className="text-muted">
+        {state.status === "loading" && "Loading shoes…"}
+      </p>
+      {state.status === "failed" && (
+        <div role="alert" className="flex flex-col items-start gap-3 rounded-control border border-danger p-3 text-danger">
+          <p>The shoe placements could not be loaded. Please try again.</p>
+          <button
+            type="button"
+            onClick={handleRetry}
+            className="min-h-11 rounded-control bg-accent px-6 font-medium text-accent-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+          >
+            Try again
+          </button>
+        </div>
+      )}
+      {state.status === "ready" && (
+        <>
+          <section aria-labelledby={chartHeadingId} className="flex flex-col gap-3">
+            <h2 id={chartHeadingId} className="text-xl font-semibold">Quadrant chart</h2>
+            <QuadrantChart shoes={state.shoes} />
+          </section>
+          <section aria-labelledby={tableHeadingId} className="flex flex-col gap-3">
+            <h2 id={tableHeadingId} className="text-xl font-semibold">All shoes by quadrant</h2>
+            <QuadrantTable shoes={state.shoes} />
+          </section>
+        </>
+      )}
+    </div>
+  );
+}
