@@ -1,16 +1,17 @@
 // Browser client. Calls only this app's own route handlers; the browser never
 // talks to the FastAPI backend directly.
 
-import type { QuadrantShoe, Shoe, SurveyPayload } from "./types";
+import type { Gender, PriorSource, Quadrant, QuadrantShoe, Shoe, SurveyPayload } from "./types";
 
 export type SubmitResult =
   | { kind: "created" }
   | { kind: "invalid"; errors: string[] }
   | { kind: "failed" };
 
-const GENDERS: readonly unknown[] = ["mens", "womens", "unisex"];
-const PRIOR_SOURCES: readonly unknown[] = ["corpus", "hand", "spec"];
-const QUADRANTS: readonly unknown[] = ["Q1", "Q2", "Q3", "Q4"];
+// Records, not arrays, so tsc rejects a set that misses or invents a member of its union.
+const GENDER_SET: Record<Gender, true> = { mens: true, womens: true, unisex: true };
+const PRIOR_SOURCE_SET: Record<PriorSource, true> = { corpus: true, hand: true, spec: true };
+const QUADRANT_SET: Record<Quadrant, true> = { Q1: true, Q2: true, Q3: true, Q4: true };
 
 function isShoe(v: unknown): v is Shoe {
   if (typeof v !== "object" || v === null) return false;
@@ -20,7 +21,8 @@ function isShoe(v: unknown): v is Shoe {
     typeof r.brand === "string" &&
     typeof r.model === "string" &&
     typeof r.version === "string" &&
-    GENDERS.includes(r.gender)
+    typeof r.gender === "string" &&
+    Object.hasOwn(GENDER_SET, r.gender)
   );
 }
 
@@ -44,9 +46,11 @@ function isQuadrantShoe(v: unknown): v is QuadrantShoe {
   return (
     isAxisValue(r.x) &&
     isAxisValue(r.y) &&
-    PRIOR_SOURCES.includes(r.prior_source) &&
+    typeof r.prior_source === "string" &&
+    Object.hasOwn(PRIOR_SOURCE_SET, r.prior_source) &&
     typeof r.is_anchor === "boolean" &&
-    QUADRANTS.includes(r.quadrant)
+    typeof r.quadrant === "string" &&
+    Object.hasOwn(QUADRANT_SET, r.quadrant)
   );
 }
 
