@@ -239,10 +239,10 @@ npx playwright install chromium
 ### Using the questionnaire with the real API
 
 `/survey` is the questionnaire. The browser only ever calls the app's own
-`/api/shoes` and `/api/survey`, and those route handlers forward the requests
-to the API server-side. They forward nothing else, and an API error other than
-the survey's 422 reaches the browser as a fixed 502 `{"errors": [...]}`. To use
-it end to end:
+`/api/shoes`, `/api/survey` and `/api/quadrant`, and those route handlers
+forward the requests to the API server-side. They forward nothing else, and an
+API error other than the survey's 422 reaches the browser as a fixed 502
+`{"errors": [...]}`. To use it end to end:
 
 1. Start the API (§7). Its default address, `http://127.0.0.1:8000`, is also
    the route handlers' default.
