@@ -26,6 +26,13 @@ import anchors as A  # noqa: E402
 import priors as PR  # noqa: E402
 import schema as S   # noqa: E402
 from app.api.routes.quadrant import QuadrantShoeOut  # noqa: E402
+from app.api.routes.recommend import (  # noqa: E402
+    GatedOutOut,
+    RecommendationOut,
+    RecommendOut,
+    TargetOut,
+    TermsOut,
+)
 
 CLIENT_REFUSED_FIELDS = {"goal_x_target", "goal_y_target"}
 
@@ -54,10 +61,25 @@ def _parse_const_array(source: str, name: str) -> list[str]:
     return re.findall(r"""["']([^"']*)["']""", match.group(1))
 
 
+_EXTENDS = r"(?:\s+extends\s+(\w+))?"
+
+
 def _parse_interface_keys(source: str, name: str) -> list[str]:
-    match = re.search(rf"export interface {name}\s*\{{([^}}]*)\}}", _strip_comments(source))
+    match = re.search(
+        rf"export interface {name}{_EXTENDS}\s*\{{([^}}]*)\}}",
+        _strip_comments(source),
+    )
     assert match, f"types.ts has no `export interface {name} {{...}}`"
-    return re.findall(r"^\s*(\w+)\??\s*:", match.group(1), flags=re.MULTILINE)
+    return re.findall(r"^\s*(\w+)\??\s*:", match.group(2), flags=re.MULTILINE)
+
+
+def _parse_interface_extends(source: str, name: str) -> str | None:
+    match = re.search(
+        rf"export interface {name}{_EXTENDS}\s*\{{",
+        _strip_comments(source),
+    )
+    assert match, f"types.ts has no `export interface {name} {{...}}`"
+    return match.group(1)
 
 
 @pytest.fixture(scope="module")
@@ -115,3 +137,44 @@ def test_parser_fails_loudly_when_an_array_is_missing(types_source):
 def test_parser_ignores_commented_out_values():
     source = 'export const X = [\n  "a", // "b"\n  /* "c" */\n] as const satisfies readonly string[];'
     assert _parse_const_array(source, "X") == ["a"]
+
+
+def test_typescript_confidence_labels_match_recommendation_literal(types_source):
+    parsed = _parse_const_array(types_source, "CONFIDENCE_LABELS")
+    expected = typing.get_args(RecommendationOut.model_fields["confidence_label"].annotation)
+    assert parsed == list(expected)
+
+
+def test_typescript_recommendation_keys_are_the_fields_added_to_quadrant_shoe_out(types_source):
+    parsed = _parse_interface_keys(types_source, "Recommendation")
+    expected = set(RecommendationOut.model_fields) - set(QuadrantShoeOut.model_fields)
+    assert sorted(parsed) == sorted(expected)
+
+
+def test_typescript_recommendation_extends_quadrant_shoe(types_source):
+    assert _parse_interface_extends(types_source, "Recommendation") == "QuadrantShoe"
+
+
+def test_typescript_recommend_response_keys_match_recommend_out_fields(types_source):
+    parsed = _parse_interface_keys(types_source, "RecommendResponse")
+    assert sorted(parsed) == sorted(RecommendOut.model_fields)
+
+
+def test_typescript_recommend_terms_keys_match_terms_out_fields(types_source):
+    parsed = _parse_interface_keys(types_source, "RecommendTerms")
+    assert sorted(parsed) == sorted(TermsOut.model_fields)
+
+
+def test_typescript_gated_out_keys_match_gated_out_out_fields(types_source):
+    parsed = _parse_interface_keys(types_source, "GatedOut")
+    assert sorted(parsed) == sorted(GatedOutOut.model_fields)
+
+
+def test_typescript_recommend_target_keys_match_target_out_fields(types_source):
+    parsed = _parse_interface_keys(types_source, "RecommendTarget")
+    assert sorted(parsed) == sorted(TargetOut.model_fields)
+
+
+def test_parser_reads_keys_from_an_extending_interface():
+    source = "export interface Child extends Base {\n  a: string;\n  b?: number;\n}"
+    assert _parse_interface_keys(source, "Child") == ["a", "b"]

@@ -51,6 +51,52 @@ export interface QuadrantShoe {
   quadrant: Quadrant;
 }
 
+export const CONFIDENCE_LABELS = ["high", "medium", "low"] as const;
+
+export type ConfidenceLabel = (typeof CONFIDENCE_LABELS)[number];
+
+// Scores are null when the term did not apply (e.g. no budget given).
+export interface Recommendation extends QuadrantShoe {
+  msrp_usd: number | null;
+  price_unknown: boolean;
+  fit_score: number | null;
+  style_score: number | null;
+  budget_score: number | null;
+  total_score: number;
+  confidence: number;
+  confidence_label: ConfidenceLabel;
+  rank: number;
+  warnings: string[];
+}
+
+// The nested types below stay flat interfaces: the contract test's key parser
+// cannot read inline object literals.
+export interface RecommendTarget {
+  x: number;
+  y: number;
+}
+
+export interface RecommendTerms {
+  fit: boolean;
+  style: boolean;
+  budget: boolean;
+}
+
+export interface GatedOut {
+  over_budget: number;
+  size_unavailable: number;
+  unplaced: number;
+}
+
+export interface RecommendResponse {
+  scorer_version: string;
+  target: RecommendTarget | null;
+  terms: RecommendTerms;
+  gated_out: GatedOut;
+  warnings: string[];
+  results: Recommendation[];
+}
+
 export interface AnchorEntry {
   brand: string;
   model: string;
