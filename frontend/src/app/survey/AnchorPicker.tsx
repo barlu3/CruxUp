@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 
+import { toShoeLabel } from "../lib/shoe-label";
 import type { AnchorFormEntry } from "../lib/survey-payload";
 import type { Shoe } from "../lib/types";
 
@@ -185,14 +186,6 @@ export function AnchorPicker({ label, shoes, value, onChange }: AnchorPickerProp
 
 function optionId(baseId: string, index: number): string {
   return `${baseId}-option-${index}`;
-}
-
-// Version and gender are always shown: (brand, model) alone is ambiguous in the catalog.
-function toShoeLabel(shoe: Shoe): string {
-  return (
-    [shoe.brand, shoe.model, shoe.version].filter((part) => part !== "").join(" ") +
-    ` (${shoe.gender})`
-  );
 }
 
 function filterShoes(shoes: Shoe[], picked: AnchorFormEntry[], query: string): Shoe[] {
