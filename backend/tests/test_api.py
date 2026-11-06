@@ -1150,7 +1150,7 @@ def test_recommend_priced_shoe_has_price_unknown_false_and_a_float_msrp():
 def test_recommend_survey_select_binds_the_token_as_a_parameter():
     conn = _recommend_conn()
     _post_recommend(conn)
-    sql, params = conn.executes[0]
+    sql, params = conn.executes[1]
     assert (params, "%(token)s" in sql) == ({"token": RECOMMEND_TOKEN}, True)
 
 
@@ -1163,7 +1163,19 @@ def test_recommend_sql_text_never_contains_the_token():
 def test_recommend_survey_select_locks_the_row():
     conn = _recommend_conn()
     _post_recommend(conn)
-    assert conn.executes[0][0].rstrip().endswith("FOR UPDATE")
+    assert conn.executes[1][0].rstrip().endswith("FOR UPDATE")
+
+
+def test_recommend_bounds_the_row_lock_wait_before_locking():
+    conn = _recommend_conn()
+    _post_recommend(conn)
+    assert conn.executes[0] == ("SET LOCAL lock_timeout = '5s'", None)
+
+
+def test_recommend_lock_timeout_is_the_masked_503():
+    conn = _ScriptedConn(raise_on_execute=psycopg.errors.LockNotAvailable("lock timeout"))
+    resp = _post_recommend(conn, raise_server_exceptions=False)
+    assert (resp.status_code, resp.json()) == (503, {"detail": "database unavailable"})
 
 
 def test_recommend_upsert_row_count_equals_result_count():
@@ -1184,8 +1196,9 @@ def test_recommend_upsert_rows_carry_the_response_total_and_version():
 def test_recommend_upsert_sql_never_touches_feedback_columns():
     conn = _recommend_conn()
     _post_recommend(conn)
-    sql = conn.executemanys[0][0]
-    assert not any(col in sql for col in ("accepted", "satisfaction", "returned", "feedback_at"))
+    insert_part, conflict_part = conn.executemanys[0][0].split("ON CONFLICT")
+    written = insert_part + conflict_part.split("WHERE")[0]
+    assert not any(col in written for col in ("accepted", "satisfaction", "returned", "feedback_at"))
 
 
 def test_recommend_delete_spares_rows_with_feedback_and_binds_kept_ids():
@@ -1618,6 +1631,33 @@ def test_db_recommend_re_request_preserves_feedback_set_between_calls(live_clien
         live_client.post("/recommend", json={"survey_token": token})
         row = next(r for r in _recommendation_rows(db_conn, token) if r[0] == shoe_id)
         assert (row[4], row[5] is not None) == (True, True)
+    finally:
+        _delete_survey_row(db_conn, token)
+
+
+def test_db_recommend_row_with_feedback_keeps_its_rank_scores_and_version(live_client, db_conn, seeded_db):
+    token = _create_survey_row(db_conn)
+    try:
+        shoe_id = live_client.post("/recommend", json={"survey_token": token}).json()["results"][0]["id"]
+        # Values no re-score could produce, so any rewrite shows.
+        with db_conn.cursor() as cur:
+            cur.execute(
+                "UPDATE recommendation SET rank = 999, fit_score = 0.1111, style_score = 0.2222, "
+                "budget_score = 0.3333, total_score = 0.4444, confidence = 0.5555, "
+                "scorer_version = 'shown-earlier', accepted = TRUE, feedback_at = now() "
+                "WHERE shoe_id = %s AND survey_id = (SELECT id FROM user_survey WHERE survey_token = %s)",
+                (shoe_id, token))
+        db_conn.commit()
+        live_client.post("/recommend", json={"survey_token": token})
+        with db_conn.cursor() as cur:
+            cur.execute(
+                "SELECT rank, fit_score::text, style_score::text, budget_score::text, "
+                "total_score::text, confidence::text, scorer_version FROM recommendation "
+                "WHERE shoe_id = %s AND survey_id = (SELECT id FROM user_survey WHERE survey_token = %s)",
+                (shoe_id, token))
+            row = cur.fetchone()
+        db_conn.rollback()
+        assert row == (999, "0.1111", "0.2222", "0.3333", "0.4444", "0.5555", "shown-earlier")
     finally:
         _delete_survey_row(db_conn, token)
 

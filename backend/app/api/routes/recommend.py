@@ -13,11 +13,18 @@ is only ever a bound parameter, never part of SQL text, a body or a log line
 Persistence. The survey row is read FOR UPDATE so two concurrent re-requests
 for one token serialise instead of interleaving their upserts and deletes.
 Each recommendation is upserted on (survey_id, shoe_id); the conflict clause
-rewrites only the scored columns, so the feedback columns (accepted,
-satisfaction, returned, feedback_at) survive a re-request. Rows for shoes the
-new ranking no longer contains (gated out after a changed catalogue or
-survey) are deleted unless they carry feedback, which is kept as a record of
-what the user was actually shown. One commit at the end: any exception
+rewrites only the scored columns and never the feedback columns (accepted,
+satisfaction, returned, feedback_at). A row that already carries feedback is
+not updated at all (`WHERE recommendation.feedback_at IS NULL`): it is the
+record of what the user was shown when they gave that feedback, so its rank,
+scores and scorer_version stay frozen even though the response reflects the
+new ranking. Rows for shoes the new ranking no longer contains (gated out
+after a changed catalogue or survey) are deleted unless they carry feedback,
+for the same reason.
+
+The row lock waits at most 5 s (SET LOCAL, so the setting ends with the
+transaction). A timeout raises LockNotAvailable, an OperationalError, which
+main.py masks as the generic 503. One commit at the end: any exception
 before it leaves the transaction uncommitted and get_conn() closes it, which
 rolls it back, so a failed request never half-writes a ranking.
 
@@ -120,6 +127,9 @@ class RecommendErrors(BaseModel):
 
 def load_survey(cur: psycopg.Cursor, token: str) -> tuple[Any, dict[str, Any]] | None:
     """The survey's id and scorer inputs, row-locked for this transaction."""
+    # Same bound as deps.CONNECT_TIMEOUT_SECONDS: a request stuck behind
+    # another for the same survey should fail, not hang the worker.
+    cur.execute("SET LOCAL lock_timeout = '5s'")
     cur.execute(
         f"SELECT id, {', '.join(SURVEY_COLUMNS)} FROM user_survey "
         "WHERE survey_token = %(token)s FOR UPDATE",
@@ -166,7 +176,8 @@ def save_ranking(cur: psycopg.Cursor, survey_id: Any, ranking: score.Ranking) ->
             "fit_score = EXCLUDED.fit_score, style_score = EXCLUDED.style_score, "
             "budget_score = EXCLUDED.budget_score, total_score = EXCLUDED.total_score, "
             "confidence = EXCLUDED.confidence, rank = EXCLUDED.rank, "
-            "scorer_version = EXCLUDED.scorer_version, created_at = now()",
+            "scorer_version = EXCLUDED.scorer_version, created_at = now() "
+            "WHERE recommendation.feedback_at IS NULL",
             [
                 {
                     "survey_id": survey_id,
