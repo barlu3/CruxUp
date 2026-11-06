@@ -86,7 +86,7 @@ flowchart LR
   ANC --> STO
   ANC --> SHOE & ALIAS
   STO --> SURV
-  PREF -.->|"q*, not yet wired"| STO
+  PREF -->|"q*"| STO
   MAIN --> RSURV
   MAIN --> RSHOE
   DEPS --> RSURV
@@ -428,9 +428,10 @@ together: the discipline, terrain and level keys, and the output precision
 #### Not yet modelled
 - **Stiffness preference** and **downsizing/pain tolerance** are listed in §7.5
   but have no mapping and no `user_survey` column.
-- **The function is not called anywhere.** `store.py` stores `goal_x_target` /
-  `goal_y_target` exactly as supplied. The submission allow-list has no key for
-  the raw `goal` slider, and no column stores it. See §12.
+- **The raw `goal` is not stored.** `store._prepare_submission()` (called by
+  `build_survey_row()`) derives `goal_x_target` / `goal_y_target` from it at
+  capture and then drops it; no column holds it or a mapping version (W4'-4b).
+  See §12.
 
 ### 4.9 HTTP API — `backend/app/main.py`, `backend/app/api/`
 
@@ -510,8 +511,9 @@ has two endpoints; `POST /recommend` belongs to W7-2 and is not routed.
 
   The Next.js route handlers are the internet-facing layer and own these
   controls (§4.11, §12).
-- **Not yet wired:** `preferences.target_quadrant()`. `POST /survey` stores
-  `goal_x_target` / `goal_y_target` as submitted (§12).
+- **`q*` is derived in the store, not the route.** `build_survey_row()` calls
+  `preferences.target_quadrant()` and refuses a caller-supplied
+  `goal_x_target` / `goal_y_target`, so the route still adds no validation (§12).
 
 ### 4.10 Frontend shell and test harness — `frontend/`
 
@@ -609,7 +611,7 @@ The questionnaire that captures a survey (W6-1). The browser talks only to the a
 - **Payload:**
   - Unset answers are left out entirely, never sent as `null` or `""`. An answer naming only shoes is therefore sent as just the anchor list(s), which the API accepts with every fit and preference field NULL (`timeline.md` §7.1).
   - Numbers are sent as JSON numbers.
-- **Not asked:** the comfort-vs-performance goal and the derived `goal_x_target`/`goal_y_target`. How that answer should reach `q*` is still undecided (§12).
+- **Not asked:** the comfort-vs-performance goal (W6-4). Without it the server derives `goal_x_target`/`goal_y_target` from discipline, terrain and level alone (§12).
 - **Outcomes:**
   - 201 replaces the form with a confirmation (`role="status"`), and focus moves to its heading. The survey token is neither displayed nor stored.
   - 422 opens a `role="alert"` summary headed "Please check your answers.", moves focus to it, and keeps the answers. Each message is shown as plain text, never as markup:
@@ -800,11 +802,13 @@ chosen shoe as `{brand, model, version, gender}`.
    `--dry-run` exercises the whole path, including JSONB adaptation, then rolls back.
 5. The API returns only the `survey_token` (201). It is the sole handle on the row.
 
-`goal_x_target` / `goal_y_target` are currently stored exactly as submitted. The
-path does not yet call `preferences.target_quadrant()` (§4.8) to derive them.
+`goal_x_target` / `goal_y_target` are never taken from the caller:
+`build_survey_row()` derives them with `preferences.target_quadrant()` (§4.8)
+from discipline, terrain, level and an optional raw `goal`, which is then
+dropped. A caller-supplied target is a 422.
 
 ### 6.5 Recommendation (planned)
-- A survey's preference answers yield a target `q*`. The derivation itself is implemented (§4.8); connecting it to capture and to scoring is not.
+- A survey's preference answers yield a target `q*`. The derivation is implemented (§4.8) and runs at capture; connecting it to scoring is not.
 - The scorer combines Fit, Style and Budget, gates on `size_exists` and price, and ranks the results.
 - Each result carries a confidence driven by `prior_source`, mention count and agreement, and is written as a `recommendation` row under the active `scorer_version`.
 - Apart from the `q*` function, none of this is implemented.
@@ -1118,29 +1122,19 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   and `shoe_unique_identity` index the raw columns, so identity resolution is a
   sequential scan. Immaterial at present size; an expression index would be needed
   well past D12.
-- **`q*` is not connected to capture.** `survey/preferences.py` is implemented
-  and tested, but no caller uses it. Two further gaps have to be closed before
-  it is:
-  - The submission allow-list (`schema.ALLOWED_KEYS`) has no key for the raw
-    comfort-vs-performance `goal`, so a payload carrying one is rejected today.
-    The endpoint would have to convert `goal` to `goal_x_target` /
-    `goal_y_target` before validation, or the schema would have to accept it.
-  - `user_survey` stores the derived `q*` but not the raw `goal`. A stored
-    target therefore cannot be recomputed exactly if the mapping constants
-    change later.
-
-  `POST /survey` (W7-1) was delivered without this wiring, and the
-  questionnaire (§4.11) does not ask for the goal. **The design is now decided
-  (`timeline.md` v3.3, §13) but not built:**
-  - `q*` gets a single author: the survey layer computes it at capture (W4'-4a).
-  - Clients may no longer send `goal_x_target` / `goal_y_target`.
-  - Migration `0002_survey_target` (W4'-4b) adds the raw `goal`, a mapping
-    version, and CHECK constraints that also cover `heel_fit`, `terrain` and
+- **`q*` is derived at capture, but the raw answer is not stored.** The first
+  part of W4'-4a (2026-11-05) computes `q*` in `store.build_survey_row()`.
+  Clients may no longer send `goal_x_target` / `goal_y_target`; a raw `goal` is
+  accepted, converted and dropped. Still open:
+  - `user_survey` stores the derived `q*` but neither the raw `goal` nor a
+    mapping version, so a stored target cannot be recomputed exactly if the
+    mapping constants change. Migration `0002_survey_target` (W4'-4b) adds
+    both, plus CHECK constraints that also cover `heel_fit`, `terrain` and
     `level`.
+  - The rest of W4'-4a: `schema.DERIVED_FIELDS`, `preferences.MAPPING_VERSION`
+    with its fingerprint test, and the per-discipline sweep test.
+  - The questionnaire (§4.11) does not ask for the goal until W6-4.
   - The scorer will read the stored `q*` and never derive it.
-  - Until W4'-4a lands, every stored survey has a NULL `q*`.
-  - Today a client can still store a `q*` that contradicts its own
-    discipline: `test_api.py` stores a trad survey (Q2) with a Q3 target.
 - **Two quadrant classifiers.** `catalog/priors.quadrant()` and
   `survey/preferences.quadrant_of()` both label points on the same plane. They
   differ on axis points: the first returns `ON-AXIS`, the second raises. They
