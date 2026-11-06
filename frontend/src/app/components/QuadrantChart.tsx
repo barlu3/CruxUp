@@ -9,7 +9,7 @@ import { PLOT_PADDING, VIEW_SIZE, toChartPoint } from "../lib/quadrant-scale";
 import { shoeName } from "../lib/shoe";
 import type { PriorSource, QuadrantShoe } from "../lib/types";
 
-const PROVENANCE_LABEL: Record<PriorSource, string> = {
+export const PROVENANCE_LABEL: Record<PriorSource, string> = {
   hand: "Hand-placed",
   spec: "Spec-derived",
   corpus: "Corpus-derived",

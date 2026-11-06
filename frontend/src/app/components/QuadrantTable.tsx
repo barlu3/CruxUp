@@ -1,13 +1,9 @@
 import { formatAxisValue } from "../lib/format-axis-value";
 import { QUADRANT_LABEL } from "../lib/quadrant-labels";
 import { shoeName } from "../lib/shoe";
-import type { PriorSource, Quadrant, QuadrantShoe } from "../lib/types";
+import { PROVENANCE_LABEL } from "./QuadrantChart";
+import type { Quadrant, QuadrantShoe } from "../lib/types";
 
-const PLACEMENT_LABEL: Record<PriorSource, string> = {
-  hand: "Hand-placed",
-  spec: "Spec-derived",
-  corpus: "From reviews",
-};
 const QUADRANTS: readonly Quadrant[] = ["Q1", "Q2", "Q3", "Q4"];
 const COLUMN_COUNT = 5;
 const CELL_CLASS = "border border-border px-3 py-2 text-left";
@@ -53,7 +49,7 @@ export function QuadrantTable({ shoes }: { shoes: QuadrantShoe[] }) {
                   </td>
                   <td className={CELL_CLASS}>{formatAxisValue(shoe.x)}</td>
                   <td className={CELL_CLASS}>{formatAxisValue(shoe.y)}</td>
-                  <td className={CELL_CLASS}>{PLACEMENT_LABEL[shoe.prior_source]}</td>
+                  <td className={CELL_CLASS}>{PROVENANCE_LABEL[shoe.prior_source]}</td>
                   <td className={CELL_CLASS}>{shoe.is_anchor ? "Yes" : ""}</td>
                 </tr>
               ))
