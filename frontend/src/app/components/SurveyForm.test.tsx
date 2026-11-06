@@ -178,13 +178,23 @@ describe("SurveyForm", () => {
     await waitFor(() => expect(push.mock.calls).toEqual([["/results"]]));
   });
 
-  it("still goes to /results when sessionStorage throws", async () => {
+  it("does not navigate to /results when sessionStorage throws", async () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new DOMException("blocked", "SecurityError");
     });
     const user = await renderReady();
     await user.click(screen.getByRole("button", { name: "Submit answers" }));
-    await waitFor(() => expect(push).toHaveBeenCalledWith("/results"));
+    await screen.findByRole("alert");
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("explains that the browser blocked storage when sessionStorage throws", async () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("blocked", "SecurityError");
+    });
+    const user = await renderReady();
+    await user.click(screen.getByRole("button", { name: "Submit answers" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("your browser blocked storage");
   });
 
   it("keeps submit busy after a 201 while /results loads", async () => {

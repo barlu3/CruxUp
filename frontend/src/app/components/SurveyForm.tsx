@@ -27,6 +27,7 @@ const CONTROL = `mt-1 block w-full rounded border border-gray-500 px-2 py-1 ${FO
 
 const FALLBACK_ERROR = "One of your answers could not be accepted. Please check them and try again.";
 const GENERIC_ERROR = "Something went wrong sending your answers. Please try again.";
+const STORAGE_ERROR = "Your answers were saved, but your browser blocked storage, so your results can't be shown here.";
 
 interface SelectFieldProps {
   field: EnumField;
@@ -100,7 +101,8 @@ function NumberField({ id, label, hint, value, bounds, onChange }: NumberFieldPr
 
 type Failure =
   | { kind: "invalid"; sizeProblems: SizeProblem[]; unmatched: string[] }
-  | { kind: "generic" };
+  | { kind: "generic" }
+  | { kind: "storage" };
 
 const sizeErrorId = (shoeId: string) => `size-error-${shoeId}`;
 
@@ -159,7 +161,10 @@ export function SurveyForm() {
       try {
         sessionStorage.setItem(SURVEY_TOKEN_KEY, result.surveyToken);
       } catch {
-        // Storage blocked: the answers are saved, but /results can only offer the survey again.
+        // Without the token /results could only say "not found", so stay here and say why.
+        setPending(false);
+        setFailure({ kind: "storage" });
+        return;
       }
       router.push("/results");
       return;
@@ -310,6 +315,8 @@ export function SurveyForm() {
                 </>
               ) : null}
             </>
+          ) : failure.kind === "storage" ? (
+            <p>{STORAGE_ERROR}</p>
           ) : (
             <p>{GENERIC_ERROR}</p>
           )}
