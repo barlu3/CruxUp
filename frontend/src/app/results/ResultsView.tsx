@@ -140,10 +140,11 @@ function ReadyResults({ ranking }: { ranking: RecommendResponse }) {
   }
 
   const priceUnknownCount = results.filter((result) => result.price_unknown).length;
+  const highlightCount = Math.min(HIGHLIGHT_COUNT, results.length);
   const notes = [
     ...ranking.warnings.map(toSurveyWarningText),
     ...gatedOutSentences,
-    ...(priceUnknownCount > 0 ? [toPriceUnknownSentence(priceUnknownCount)] : []),
+    ...(ranking.terms.budget && priceUnknownCount > 0 ? [toPriceUnknownSentence(priceUnknownCount)] : []),
   ];
 
   return (
@@ -177,7 +178,7 @@ function ReadyResults({ ranking }: { ranking: RecommendResponse }) {
       </section>
       <section aria-labelledby={chartHeadingId} className="flex flex-col gap-3">
         <h2 id={chartHeadingId} className="text-xl font-semibold">Where they sit on the quadrant</h2>
-        <p className="text-sm text-muted">Your top 3 are highlighted. Only ranked shoes appear; shoes that were left out are not shown.</p>
+        <p className="text-sm text-muted">{toHighlightedText(highlightCount)} Only ranked shoes appear; shoes that were left out are not shown.</p>
         {/* Narrow cap: only a few labelled shoes, so the chart stays near body-small text on wide screens. */}
         <div className="mx-auto w-full max-w-sm">
           <QuadrantChart
@@ -197,6 +198,10 @@ function SurveyLink({ children }: { children: string }) {
       {children}
     </Link>
   );
+}
+
+function toHighlightedText(count: number): string {
+  return count === 1 ? "Your top shoe is highlighted." : `Your top ${count} are highlighted.`;
 }
 
 function toRankedCount(count: number): string {

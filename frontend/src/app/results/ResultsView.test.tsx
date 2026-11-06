@@ -141,6 +141,16 @@ describe("ResultsView", () => {
     expect(await screen.findByText("2 shoes priced over your budget were left out.")).toBeInTheDocument();
   });
 
+  it("omits the unknown-price note when the survey set no budget", async () => {
+    const results = [makeResult(1, { price_unknown: true, msrp_usd: null }), makeResult(2)];
+    fetchMock.mockResolvedValue(
+      jsonResponse(makeRanking({ results, terms: { fit: true, style: true, budget: false } })),
+    );
+    renderWithToken();
+    await screen.findByRole("region", { name: "Ranked shoes" });
+    expect(screen.queryByText(/no known price/)).not.toBeInTheDocument();
+  });
+
   it("counts shoes with an unknown price", async () => {
     const results = [makeResult(1, { price_unknown: true, msrp_usd: null }), makeResult(2)];
     fetchMock.mockResolvedValue(jsonResponse(makeRanking({ results })));
@@ -304,6 +314,18 @@ describe("ResultsView", () => {
     expect(
       await screen.findByText("Your top 3 are highlighted. Only ranked shoes appear; shoes that were left out are not shown."),
     ).toBeInTheDocument();
+  });
+
+  it("names only the shoes that exist when there are fewer than three", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(makeRanking({ results: [makeResult(1), makeResult(2)] })));
+    renderWithToken();
+    expect(await screen.findByText(/^Your top 2 are highlighted\./)).toBeInTheDocument();
+  });
+
+  it("uses the singular when there is one ranked shoe", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(makeRanking({ results: [makeResult(1)] })));
+    renderWithToken();
+    expect(await screen.findByText(/^Your top shoe is highlighted\./)).toBeInTheDocument();
   });
 
   it("sends the token only in the request body", async () => {
