@@ -3,10 +3,10 @@
 CruxUp is a climbing shoe recommender: a Python backend (FastAPI, Postgres) and
 a Next.js frontend. The plan of record is [`timeline.md`](timeline.md).
 
-Current state: **W0 foundations.** The schema, catalogue, prior model and corpus
-collector exist. The API serves `POST /survey` and `GET /shoes` (§7). The
-frontend builds and has a test harness, but its survey and results pages are
-placeholders.
+Current state: **W6-1 complete.** The schema, catalogue, prior model, corpus
+collector and survey capture exist. The API serves `POST /survey` and `GET /shoes`
+(§7). The questionnaire at `/survey` saves through Next.js route handlers to the
+API (§8). `/results` is still a placeholder (W6-3), and there is no scorer yet.
 
 ---
 
@@ -151,7 +151,7 @@ prints what is wrong and touches nothing.
 ## 6. Verify
 
 ```bash
-python3 -m pytest backend/tests/ -q        # 1610 tests; database-backed ones skip if Postgres is unreachable
+python3 -m pytest backend/tests/ -q        # 1639 passed, 15 skipped without a database; the 15 DB-backed tests run when Postgres is reachable
 python3 backend/app/catalog/validate.py    # catalogue invariants
 python3 backend/app/catalog/priors.py      # spec model vs hand placements
 ```
@@ -187,7 +187,27 @@ curl -s -H 'content-type: application/json' \
 ```
 
 - A valid `POST /survey` **commits a row** and returns only `{"survey_token": ...}`. Use `store.py --dry-run` to try a submission without writing.
-- Interactive docs are at `/docs`. Only the Next.js route handler should call this service; do not expose it publicly.
+- Interactive docs are at `/docs`. Only the Next.js route handlers should call this service; do not expose it publicly.
+
+### Running the frontend against it
+
+The frontend's route handlers call this service at `CRUXUP_API_URL`. It is read on the
+server at request time and defaults to `http://127.0.0.1:8000`, so a local uvicorn on
+that port needs no configuration:
+
+```bash
+cd backend && uvicorn app.main:app --port 8000     # terminal 1
+cd frontend && npm run dev                         # terminal 2; http://localhost:3000
+```
+
+If the backend runs elsewhere, set the variable for the frontend process:
+
+```bash
+CRUXUP_API_URL=http://127.0.0.1:9000 npm run dev
+```
+
+Keep it free of the `NEXT_PUBLIC_` prefix. A public variable would be inlined into the
+client bundle and expose the backend origin to the browser.
 
 ---
 
@@ -205,6 +225,9 @@ npm run dev        # http://localhost:3000
 Use `npm ci`, not `npm install`, unless you mean to change dependencies. The
 lockfile is committed, and `npm install` may rewrite it.
 
+Use npm here, not pnpm or yarn: the lockfile is `package-lock.json`, and CI runs `npm ci`.
+A second lockfile would drift from the one CI installs.
+
 Checks (the CI `frontend` job runs the same steps, in this order):
 
 ```bash
@@ -215,22 +238,29 @@ npm run build      # production build; next build does not run ESLint
 npm run test:e2e   # Playwright: e2e/*.spec.ts, Chromium only
 ```
 
-Before the first Playwright run, download its browser:
+Before the first Playwright run, install the browser and the system libraries it needs:
 
 ```bash
-npx playwright install chromium
+npx playwright install --with-deps chromium
 ```
 
-- Playwright starts its own server on **port 3100**, so it does not collide
-  with `npm run dev` on 3000. Locally that server is `next dev`; a server
-  already listening on 3100 is reused.
+`--with-deps` installs Linux system packages (NSS and similar) through the package
+manager, so on Linux it needs `sudo`. CI runs the same command. A machine that already
+has those libraries only needs `npx playwright install chromium`.
+
+- Playwright starts two servers. A stub backend runs on **port 3101**
+  (`e2e/fake-backend.mjs`, a stand-in for FastAPI, so the end-to-end run needs no
+  database). Next.js runs on **port 3100**, pointed at the stub through
+  `CRUXUP_API_URL`. Neither port collides with `npm run dev` on 3000.
+- Locally, both servers are reused if something already listens on their ports
+  (`reuseExistingServer`). A reused server may be pointed at a different backend, so
+  stop it before running the tests. CI always starts fresh.
 - `CI=1 npm run test:e2e` serves the production build with `next start`
   instead, as CI does. Run `npm run build` first.
 - `npm run test:watch` re-runs Vitest on save. `npm run test:coverage` writes a
   V8 coverage report to `coverage/` (no thresholds yet).
 
-Only the home page has content so far. `/survey` and `/results` are
-placeholders (W6-1, W6-3).
+The questionnaire at `/survey` is built (W6-1). `/results` is a placeholder until W6-3.
 
 > **Running `next dev` from a coding agent** (Claude Code, Cursor and similar)
 > makes Next.js 16.3 write `AGENTS.md` and `CLAUDE.md` into `frontend/`, or

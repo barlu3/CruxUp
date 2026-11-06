@@ -1,10 +1,10 @@
 # Climbing Shoe Recommender — Project Plan & Agent Task Spec
 
-**Version:** 3.2
+**Version:** 3.3
 **Status:** Active. Supersedes v2.0 (2026-05-25).
-**Last updated:** 2026-10-01
-**Change basis:** v3.0 was the feasibility review of all 22 backlog tasks (§2.1). v3.1 adds D11 and D12, records what has actually been built (§2.0), and folds in two findings measured from the first live collection run — the mention-attribution problem (W1-3) and the $N_{\min}$ reachability problem (W2-3). **v3.2** closes a structural gap found while sequencing W6-1: the HTTP layer (**W7**) and the frontend build foundation (**W6-0**) were assumed by the scaffold but carried no task ID, so the plan showed W6-1 as startable when two prerequisites did not exist. See §15.
-**Progress:** 8 of 37 tasks complete (2 deferred). W1-0b is **not** complete: its collection path failed the YouTube terms review (§10.2). See §2.0.
+**Last updated:** 2026-11-05
+**Change basis:** v3.0 was the feasibility review of all 22 backlog tasks (§2.1). v3.1 adds D11 and D12, records what has actually been built (§2.0), and folds in two findings measured from the first live collection run — the mention-attribution problem (W1-3) and the $N_{\min}$ reachability problem (W2-3). **v3.2** closes a structural gap found while sequencing W6-1: the HTTP layer (**W7**) and the frontend build foundation (**W6-0**) were assumed by the scaffold but carried no task ID, so the plan showed W6-1 as startable when two prerequisites did not exist. **v3.3** records W6-1 as done and closes the §13 $\mathbf{q}^*$ wiring gap (option a, implemented in `store.build_survey_row`). It also decides the W6-3 scorer gap: a minimal coded scorer and W7-2 move into the thin slice, and the 30 calibration shoes get MSRP first. See §15.
+**Progress:** 9 of 37 tasks complete (4 deferred: W0-3, W0-1b, W2-5, W5-2). W1-0b is **not** complete: its collection path failed the YouTube terms review (§10.2). See §2.0.
 
 ---
 
@@ -57,11 +57,11 @@ The original availability-based recommendation angle was **dropped**. The engine
 | **D10** | **Survey fit validation is a directional check (n≈8–12), not a statistical study.** | A real claim needs 30–50 participants and weeks of recruitment. Solo and pre-launch, that is not available. | W4'-3 rescoped. Real validation waits for §9.3 post-launch data — which is why the feedback columns land in W0-1a now. |
 | **D11** | **Reddit is not load-bearing. Apply for free non-commercial access now; build the corpus on YouTube and forums.** | Self-service app registration is closed — every OAuth client needs manual approval, reported at 2-4 weeks with a real chance of silent rejection. Cost turned out not to be the obstacle (metered access is about $3.60 at this volume); *access latency and uncertainty* are. | Resolves W0-0. Splits W1-0 into 0a (apply), 0b (YouTube/forums collector), 0c (Reddit adapter on approval). Forces a source-agnostic collector interface. See §10.0. **REOPENED 2026-09-16 — needs user sign-off.** The YouTube half of this decision failed the terms review (§10.2): the Developer Policies appear to prohibit the §7.4 design outright. The Reddit half stands. |
 
-### 2.0 Progress (audited 2026-09-14; refreshed 2026-10-01)
+### 2.0 Progress (audited 2026-09-14; refreshed 2026-11-05)
 
 Audited against files on disk and verified runs, not against memory.
 
-**Complete — 8 of 37 backlog tasks** (37 since v3.2 added W6-0, W7-1, W7-2):
+**Complete — 9 of 37 backlog tasks** (37 since v3.2 added W6-0, W7-1, W7-2):
 
 | Task | Evidence |
 |---|---|
@@ -70,9 +70,10 @@ Audited against files on disk and verified runs, not against memory.
 | W5-1a hand-place 30 shoes | `shoes.yaml`, seeded to Postgres: 30 shoes, 71 aliases. |
 | W5-1b spec→prior model | `priors.py`. LOOCV MAE x 0.139 / y 0.113, 87% quadrant agreement. |
 | W4'-1 survey capture (2026-09-17) | `survey/{schema,anchors,store}.py`. 146 tests; anchors resolve against the seeded catalog and reject unknown *and ambiguous* pairs; no DDL added. Reviewed 2026-09-20 (database / python / security). |
-| W4'-2 preferences → $\mathbf{q}^*$ (2026-09-23) | `survey/preferences.py`, a pure stdlib function. Every discipline lands in its §3 quadrant, and $\mathbf{q}^*$ stays inside $[-1,1]^2$ and off both axes for all 600 enum combinations (1334 tests). Reviewed (python). **Not yet wired into capture** — see §13. |
-| W7-1 API: `POST /survey` + `GET /shoes` (2026-09-25) | `main.py`, `api/deps.py`, `api/routes/{survey,shoes}.py`; 57 tests. `POST /survey` adds no validation of its own: its 422 list equals `build_survey_row()`'s, and a test pins that FastAPI validates nothing on the route. A valid submission returns only `survey_token`. `GET /shoes` returns `version`/`gender`, and every item round-trips to its own id. Reviewed (python, 2 rounds; security). **$\mathbf{q}^*$ still not wired** — see §13. |
+| W4'-2 preferences → $\mathbf{q}^*$ (2026-09-23) | `survey/preferences.py`, a pure stdlib function. Every discipline lands in its §3 quadrant, and $\mathbf{q}^*$ stays inside $[-1,1]^2$ and off both axes for all 600 enum combinations (1334 tests). Reviewed (python). **Wired into capture by W6-1** (2026-11-05) — see §13. |
+| W7-1 API: `POST /survey` + `GET /shoes` (2026-09-25) | `main.py`, `api/deps.py`, `api/routes/{survey,shoes}.py`; 57 tests. `POST /survey` adds no validation of its own: its 422 list equals `build_survey_row()`'s, and a test pins that FastAPI validates nothing on the route. A valid submission returns only `survey_token`. `GET /shoes` returns `version`/`gender`, and every item round-trips to its own id. Reviewed (python, 2 rounds; security). **$\mathbf{q}^*$ wired by W6-1** (2026-11-05) — see §13. |
 | W6-0 frontend foundation (2026-10-01) | `layout.tsx`, `page.tsx`, a committed `package-lock.json`, Vitest + React Testing Library, Playwright, and a CI `frontend` job. `npm run build` prerenders all four routes; 2 Vitest and 2 Playwright tests pass, the latter against both `next dev` and the production build; lint and type-check are clean. `next` was raised 16.2.4 → 16.3.8 to clear critical advisories (`npm audit`: 0). Reviewed (typescript). |
+| W6-1 questionnaire (2026-11-05) | `survey/page.tsx` and `SurveyForm` (fit, preference, budget and anchor inputs); `AnchorPicker` over `GET /shoes`, disambiguating version and gender; `results/page.tsx` placeholder. q* is derived in `store.build_survey_row()` from a raw `goal`; caller-supplied targets are refused. Next.js route handlers `/api/survey` and `/api/shoes` proxy to FastAPI (allow-listed paths, 32 KB cap, masked errors, `CRUXUP_API_URL`); typed client `lib/api.ts`, payload converter, design tokens in `globals.css`. Tests: 190 Vitest, 8 Playwright against a stub FastAPI, 14 pytest contract tests; backend 1,639 passed and 15 DB-backed skipped (no Postgres at development time, §13). Reviewed (python, typescript, react, security). |
 
 **Built but not on the backlog** — support the above, worth naming so they are not re-scoped later:
 `validate.py` (catalogue invariants + the `--require-msrp` budget-gate guard), `config.py` (`.env` loading), `SETUP.md` (local setup, verified end to end), 54 tests.
@@ -83,9 +84,9 @@ Audited against files on disk and verified runs, not against memory.
 1. **W1-3 needs redesigning.** Only 18% of collected comments name a shoe; 44% say "these/them/it". Alias matching would capture under a fifth of the corpus. Attribute by video subject first.
 2. **$N_{\min}=25$ may be unreachable.** 0/30 shoes clear it at 379 documents; top 5 hold 64% of mentions. The power law is steeper than §4 assumed. Query generation is currently anchor-biased, which partly explains it — per-shoe queries are the first fix.
 
-**Not started:** everything else. The thin slice (D7) now has its data layer, survey capture, the $\mathbf{q}^*$ target function, an HTTP surface for capture and the catalog, and a frontend that builds and has a test harness, but no scorer and no product UI: the survey and results pages are placeholders. `api/routes/recommend.py`, `recommend/`, `nlp/` and `eval/` are still stubs.
+**Not started:** everything else. The thin slice (D7) now has its data layer, survey capture, the $\mathbf{q}^*$ target function wired into capture, an HTTP surface for capture and the catalogue, and a questionnaire UI with a browser-to-API path, plus a results placeholder. It has no scorer and no ranked results. `api/routes/recommend.py`, `recommend/`, `nlp/` and `eval/` are still stubs.
 
-**Nearest unblocks (refreshed 2026-10-01):** both prerequisites of **W6-1** are done, W7-1 (2026-09-25) and W6-0 (2026-10-01), so W6-1 is the head of the critical path to a shippable slice. W7-1 shipped without deciding how the raw comfort-vs-performance answer reaches `target_quadrant()` (§13). That decision now gates W6-1's questionnaire, which has to know what to send. W1-0a remains one hour of paperwork gating a 2–4 week queue. W5-1c/W5-1d are mechanical and gate the §7.6 budget gate.
+**Nearest unblocks (refreshed 2026-11-05):** W6-1 is done, so the thin slice's next steps follow the user-approved sequence: **MSRP for the 30 calibration shoes** (the first part of W5-1d, because 0 of 30 carry MSRP today) → **W6-2** static quadrant → a **minimal coded scorer and W7-2 `POST /recommend`** (pulled into the slice, §13 option a, decided 2026-11-05) → **W6-3** results. W1-0a remains one hour of paperwork gating a 2–4 week queue. The rest of W5-1 (the catalogue expansion and the remaining MSRP) gates the §7.6 budget gate.
 
 ### 2.1 Review disposition (2026-09-07)
 
@@ -181,7 +182,11 @@ flowchart TD
   W6_0[W6-0 Frontend foundation] --> W6_1[W6-1 Questionnaire UI]
   W7_1 --> W6_1
   SLICE --> W6[W6 Web app]
-  W6_1 --> W6
+  W6_1 --> W5_1d[W5-1d MSRP for the 30 calibration shoes]
+  W5_1d --> W6_2[W6-2 Interactive quadrant]
+  W6_2 --> W7_2[W7-2 minimal scorer and POST /recommend]
+  W7_2 --> W6_3[W6-3 Results and confidence]
+  W6_3 --> W6
 
   W0_1a --> W0_4[W0-4 Eval harness]
   W0_4 --> W0_4a[W0-4a Climber panel]
@@ -200,7 +205,7 @@ flowchart TD
   W3_4 --> W6
 ```
 
-**Critical path to a shippable product:** W0-1a → W5-1 → W4' → W3-1 → **W7-1 → W6-0** → W6. The NLP pipeline is an *upgrade path* for shoe placement, not a precondition for shipping.
+**Critical path to a shippable product:** W0-1a → W5-1 → W4' → **W7-1 → W6-0 → W6-1** → MSRP for the 30 calibration shoes (W5-1d) → W6-2 → W7-2 (minimal scorer) → W6-3 → W6. The NLP pipeline is an *upgrade path* for shoe placement, not a precondition for shipping.
 
 **On the two nodes added in v3.2.** The browser cannot reach the survey layer without an HTTP surface, and the Next.js app cannot build without a root layout or run tests without a harness. Both were assumed by `scaffold.sh` — which created `backend/app/main.py`, the three route stubs and `src/app/lib/api.ts` — but neither ever carried a task ID, so the plan showed W6-1 as startable when it was not. **Architecture decided 2026-09-21:** the browser calls Next.js route handlers, which forward server-side to FastAPI on localhost. That keeps every validation rule in the tested Python layer (W4'-1), needs no CORS, and never exposes the backend origin.
 
@@ -595,7 +600,7 @@ The collector must therefore be written source-agnostic from the first commit �
 ### W3 — Scoring
 | ID | Task | Deps | Effort | Notes |
 |---|---|---|---|---|
-| W3-1 | Spreadsheet scoring v0 (§7) | W5-1a | 3–4d | **In the thin slice.** Sanity-check ordering with a climber before writing Python. |
+| W3-1 | Spreadsheet scoring v0 (§7) | W5-1a | 3–4d | **In the thin slice.** Sanity-check ordering with a climber before writing Python. **Decided 2026-11-05 (§13 option a):** a minimal coded scorer is pulled into the slice to feed W6-3 and W7-2, so the spreadsheet is no longer the only scoring artefact before results ship. |
 | W3-2 | Per-brand sizing map | W5-1c | 1w | **Soft warning, not a hard gate** (D9). Hard gate only on "brand doesn't make this size." |
 | W3-3 | Code scorer; weights by judgment, externalized to config | W3-1, W3-2 | 1.5w | **No tuning at MVP** — no validation set exists (§7.6). |
 | W3-4 | Confidence $C_j$ propagation + display contract | W3-3 | 4d | **Promoted** — runs alongside W3-3, not after. |
@@ -604,7 +609,7 @@ The collector must therefore be written source-agnostic from the first commit �
 | ID | Task | Deps | Effort | Notes |
 |---|---|---|---|---|
 | ~~W4'-1~~ | ~~Survey schema: fit inputs + anchor shoes $G,B$~~ | W0-1a | 1w | **DONE 2026-09-17, reviewed 2026-09-20.** `survey/{schema,anchors,store}.py`, 146 tests. Anchors resolve against the catalog; an ambiguous `(brand, model)` is rejected, never guessed. No DDL added. The HTTP surface is **W7-1**, not this task. |
-| ~~W4'-2~~ | ~~Preference inputs → target $\mathbf{q}^*$~~ | W0-1a | 3d | **DONE 2026-09-23, reviewed 2026-09-23.** `survey/preferences.py`, 1334 tests. Discipline sets the quadrant; terrain, level and goal only move $\mathbf{q}^*$ within it, and by construction it never reaches an axis. Stiffness preference and downsizing tolerance are not modelled. Not yet called by capture (§13). |
+| ~~W4'-2~~ | ~~Preference inputs → target $\mathbf{q}^*$~~ | W0-1a | 3d | **DONE 2026-09-23, reviewed 2026-09-23.** `survey/preferences.py`, 1334 tests. Discipline sets the quadrant; terrain, level and goal only move $\mathbf{q}^*$ within it, and by construction it never reaches an axis. Stiffness preference and downsizing tolerance are not modelled. Called by capture since W6-1 (2026-11-05, §13). |
 | W4'-3 | **Directional** fit check, $n \approx 8$–12 | W4'-1, W3-1 | 1w | **Rescoped** (D10). Sanity-check, not validation. Real validation = §9.4 post-launch. |
 
 ### W5 — Catalog
@@ -613,22 +618,22 @@ The collector must therefore be written source-agnostic from the first commit �
 | ~~W5-1a~~ | ~~Hand-place **30** shoes (calibration set)~~ | W0-1a | 1w | **DONE.** Five §3 anchors included. This set exists to fit and validate `priors.py`, not to be the catalog. |
 | ~~W5-1b~~ | ~~Fit spec→prior model (`priors.py`)~~ | W5-1a | 2d | **DONE.** LOOCV MAE x 0.139 / y 0.113, 87% quadrant agreement. Refit with `priors.py --refit`. |
 | W5-1c | Expand catalog to **~100** shoes | W5-1b | 1–2w | **D12.** Spec lookup only — `derive_prior()` supplies the placement, so no per-shoe judgement. Mark `prior_source: spec`. |
-| W5-1d | Source MSRP for all catalog shoes | W5-1c | 1w | Now the real budget item: scales linearly with catalog size. `validate.py --require-msrp` blocks the §7.6 budget gate until done. |
+| W5-1d | Source MSRP for all catalog shoes | W5-1c | 1w | Now the real budget item: scales linearly with catalog size. `validate.py --require-msrp` blocks the §7.6 budget gate until done. **Sourcing order decided 2026-11-05:** the 30 calibration shoes first, ahead of the rest of the slice, because 0 of 30 carry MSRP today. |
 | W5-2 | Lifecycle handling (discontinued/revised/version) | W5-1c | — | **Deferred.** At 30 shoes a discontinued shoe is a manual edit. Revisit past ~50. |
 
 ### W6 — Frontend (moved earlier)
 | ID | Task | Deps | Effort | Notes |
 |---|---|---|---|---|
 | ~~W6-0~~ | ~~Frontend foundation: install deps, root layout, test harness~~ | — | 2d | **DONE 2026-10-01, reviewed (typescript).** Root layout and home page; npm lockfile committed; Vitest + React Testing Library (`src/**/*.test.tsx`) and Playwright (`e2e/`, Chromium, port 3100); CI `frontend` job. `next` pinned at 16.3.8 — the scaffolded 16.2.4 carried critical advisories. W6-1 inherits both test layers. The app was then moved from the repository root into `frontend/` (same day). |
-| W6-1 | Questionnaire UI | W4'-2, **W7-1**, **W6-0** | 1–2w | **In the thin slice.** Anchor picker needs catalog autocomplete, not free text — so it depends on `GET /shoes` (W7-1), which must expose `version`/`gender` or the UI recreates the ambiguity W4'-1 rejects server-side. |
+| ~~W6-1~~ | ~~Questionnaire UI~~ | W4'-2, **W7-1**, **W6-0** | 1–2w | **DONE 2026-11-05, reviewed (python, typescript, react, security).** Questionnaire, anchor picker over `GET /shoes`, Next.js route handlers, typed client, design tokens, and the q* wiring decided in §13 (option a). Also decided 2026-11-05 (§13): the proxy error envelope, US street shoe size, and npm in `frontend/`. Original scope: **In the thin slice.** Anchor picker needs catalog autocomplete, not free text — so it depends on `GET /shoes` (W7-1), which must expose `version`/`gender` or the UI recreates the ambiguity W4'-1 rejects server-side. |
 | W6-2 | Interactive quadrant | W5-1a | 1w static + 1w interactive | **Moved from second-to-last into the thin slice.** Hand-placed shoes test the product hypothesis with no corpus. |
-| W6-3 | Results + confidence display | W6-2, W3-1 | 1w | Low-confidence results visibly distinct; gated-out shoes never shown. |
+| W6-3 | Results + confidence display | W6-2, W7-2 (minimal scorer, §13) | 1w | Low-confidence results visibly distinct; gated-out shoes never shown. |
 
 ### W7 — API / Service Layer (added v3.2)
 | ID | Task | Deps | Effort | Notes |
 |---|---|---|---|---|
-| ~~W7-1~~ | ~~FastAPI app + `POST /survey` + `GET /shoes`~~ | W4'-1, W5-1a | 3–4d | **DONE 2026-09-25, reviewed 2026-09-25** (python ×2, security). `main.py`, `api/deps.py`, `api/routes/{survey,shoes}.py`, 57 tests. $\mathbf{q}^*$ wiring was **not** done; it remains open in §13. Original scope: **In the thin slice; blocks W6-1.** `POST /survey` is a thin wrapper over the tested `build_survey_row()` / `insert_survey()` — it must add no validation of its own, or the rules drift from the Python layer. `GET /shoes` backs the anchor picker and **must return `version` and `gender`**, since three catalog pairs share `(brand, model)`. Browser → Next.js route handler → FastAPI (no CORS; backend origin unexposed). |
-| W7-2 | `POST /recommend` | W3-3, W7-1 | 3d | Needed by W6-3. Deliberately **not** in W7-1: there is no coded scorer until W3-3, so the endpoint would have nothing to call. See §13. |
+| ~~W7-1~~ | ~~FastAPI app + `POST /survey` + `GET /shoes`~~ | W4'-1, W5-1a | 3–4d | **DONE 2026-09-25, reviewed 2026-09-25** (python ×2, security). `main.py`, `api/deps.py`, `api/routes/{survey,shoes}.py`, 57 tests. $\mathbf{q}^*$ wiring was **not** done here; W6-1 closed it on 2026-11-05 (§13). Original scope: **In the thin slice; blocks W6-1.** `POST /survey` is a thin wrapper over the tested `build_survey_row()` / `insert_survey()` — it must add no validation of its own, or the rules drift from the Python layer. `GET /shoes` backs the anchor picker and **must return `version` and `gender`**, since three catalog pairs share `(brand, model)`. Browser → Next.js route handler → FastAPI (no CORS; backend origin unexposed). |
+| W7-2 | `POST /recommend` | W7-1, minimal scorer (§13) | 3d | Needed by W6-3. **Pulled into the thin slice, decided 2026-11-05 (§13 option a).** It depends on a minimal coded scorer, not the full W3-3, which stays later. Originally deliberately **not** in W7-1, because there was no coded scorer until W3-3. |
 
 ---
 
@@ -655,9 +660,11 @@ gantt
   Spreadsheet scoring (W3-1)       :p1b, after p1a, 4d
   API survey + shoes (W7-1)        :done, p1b2, after p1b, 4d
   Frontend foundation (W6-0)       :done, p1b3, 2026-10-01, 1d
-  Questionnaire UI (W6-1)          :p1c, after p1b2 p1b3, 10d
-  Static quadrant (W6-2)           :p1d, after p1c, 5d
-  Results + confidence (W6-3)      :p1e, after p1d, 6d
+  Questionnaire UI (W6-1)          :done, p1c, after p1b2 p1b3, 10d
+  MSRP for 30 shoes (W5-1d, part)  :p1m, after p1c, 2d
+  Static quadrant (W6-2)           :p1d, after p1m, 5d
+  Minimal scorer + W7-2 (POST /recommend) :p1s, after p1d, 4d
+  Results + confidence (W6-3)      :p1e, after p1s, 6d
   SLICE SHIPS                      :milestone, m1, after p1e, 0d
 
   section P2 Eval foundation
@@ -700,13 +707,25 @@ Durations assume a solo builder. The v2 note "estimates for a small team" no lon
 ## 13. Open Items / Future Updates
 
 - **Foot scan re-introduction (post-MVP):** LiDAR via ARKit (`ARMeshAnchor`/RealityKit; **not** ARFaceAnchor/TrueDepth — that API is face-only) + ARCore ToF; photo fallback with calibration reference + MediaPipe/YOLOv8 keypoints. Slots into §7.2 by raising $c$ and adding geometric dimensions. Re-open biometric posture at that point — derived measurements only, no images (D4).
-- **W6-3 has no server-side scorer to call (raised 2026-09-21, needs a decision).** W6-3 "Results + confidence" depends on W6-2 and **W3-1**, but W3-1 is deliberately *a spreadsheet* ("sanity-check ordering with a climber before writing Python"). The first coded scorer is W3-3, which depends on W3-2 → W5-1c — all after the slice ships. So as drawn, the thin slice reaches a results page with nothing to produce results. Three ways out: (a) pull a minimal coded scorer forward into the slice; (b) let W6-3 read pre-computed results and accept that the slice demos rather than serves; (c) re-point W6-3's dependency at W3-3 and move it out of the slice. This also decides whether W7-2 is in scope for the slice.
-- **$\mathbf{q}^*$ is computed but not wired into capture (raised 2026-09-23, needs a decision).** `preferences.target_quadrant()` (W4'-2) exists, but nothing calls it.
+- **W6-3 has no server-side scorer to call (raised 2026-09-21; DECIDED 2026-11-05: option (a)).** W6-3 "Results + confidence" depends on W6-2 and **W3-1**, but W3-1 is deliberately *a spreadsheet* ("sanity-check ordering with a climber before writing Python"). The first coded scorer is W3-3, which depends on W3-2 → W5-1c — all after the slice ships. So as drawn, the thin slice reaches a results page with nothing to produce results. Three ways out: (a) pull a minimal coded scorer forward into the slice; (b) let W6-3 read pre-computed results and accept that the slice demos rather than serves; (c) re-point W6-3's dependency at W3-3 and move it out of the slice. This also decides whether W7-2 is in scope for the slice. **Decision, 2026-11-05: option (a).** A minimal coded scorer enters the slice and `POST /recommend` (W7-2) is pulled in with it, so W6-3 has something to call. The full scorer (W3-3) stays later. The MSRP for the 30 calibration shoes is sourced first, because 0 of 30 carry MSRP today (W5-1d).
+- **$\mathbf{q}^*$ is computed but not wired into capture (raised 2026-09-23; RESOLVED 2026-11-05, see below).** `preferences.target_quadrant()` (W4'-2) exists, but nothing called it until W6-1.
   - The submission allow-list has no key for the raw comfort-vs-performance answer, so a payload carrying it is rejected (D4).
   - `user_survey` stores only the derived `goal_x_target` / `goal_y_target`, so a stored target cannot be recomputed exactly if the mapping constants change.
   - Options: (a) `POST /survey` (W7-1) converts the raw answer to $\mathbf{q}^*$ before validation, with no DDL change; (b) add a column for the raw answer in a new migration, which could be bundled with the missing `heel_fit` / `terrain` / `level` CHECKs.
   - W7-1's dependencies do not yet include W4'-2.
   - **Update 2026-09-25:** W7-1 shipped without this. Its request limited `POST /survey` to wrapping `build_survey_row()` / `insert_survey()` with no validation of its own, and option (a) would add a conversion step, plus `target_quadrant()`'s own checks, to the endpoint. The decision now gates **W6-1**, whose questionnaire must know whether to send a raw answer or `goal_x_target` / `goal_y_target`.
+  - **RESOLVED 2026-11-05 — option (a).** The derivation lives in `store.build_survey_row()`, not in the route, so the W7-1 parity test that pins `POST /survey`'s 422 list to `build_survey_row()`'s still holds and the route stays validation-free. The client sends the raw `goal` in [-1, 1] and never a target: a caller-supplied `goal_x_target` / `goal_y_target` is refused, even as null. `goal` is removed before `schema.validate()`, so it is never persisted.
+  - **Trade-off, accepted:** only the derived targets are stored, not the raw `goal`. A stored target cannot be recomputed if the mapping constants in `preferences.py` change. Keeping the answer would need the column in option (b), a future migration.
+- **W6-1 known gaps (deferred, recorded 2026-11-05).** Carried into `docs/ARCHITECTURE.md` §12.
+  - No rate limit on the unauthenticated `POST /api/survey`.
+  - No request-body read timeout in the proxy, so a slow client can hold a connection open (slowloris). The 32 KB cap bounds size, not time.
+  - No `server-only` guard package; the proxy relies on its comment and on `CRUXUP_API_URL` having no `NEXT_PUBLIC_` prefix.
+  - No CSP or other security headers on pages. API responses carry `nosniff` and `no-store`.
+  - The survey token stays in `sessionStorage` with no cleanup until W6-3 consumes it.
+  - The 15 DB-backed backend tests were skipped during development because no Postgres was reachable. They must be run against a local database before merge.
+- **Proxy error envelope (decided 2026-11-05).** Proxy errors reuse the backend's `{"errors": [...]}` envelope with fixed text. This is a deliberate exception to error-handling.md's `{error: {code, message}}` shape, so the UI handles one error shape.
+- **`street_size` is a US street shoe size (decided 2026-11-05).** The form asks for US sizes. `schema.py` caps the value at 20, which rules out EU sizes.
+- **npm, not pnpm, in `frontend/` (decided 2026-11-05).** The lockfile is `package-lock.json` and CI runs `npm ci`. A second lockfile would drift from the one CI installs.
 - **Learned ranking:** replace the weighted scorer once online feedback labels exist (§9.4).
 - **`trainer.py` distillation:** LLM → small classifier when volume/cost justify (W2-5).
 - **Catalog growth past 30:** triggers W5-2 (lifecycle) and raises the long-tail cold-start problem again.
@@ -723,6 +742,19 @@ Durations assume a solo builder. The v2 note "estimates for a small team" no lon
 ---
 
 ## 15. Changelog
+
+**v3.3 (2026-11-05)** — W6-1 done; the q* wiring gap closed; the thin slice's next steps re-sequenced. Two open §13 items resolved (q* and the W6-3 scorer), three conventions recorded (proxy error envelope, US street size, npm), and the thin-slice Gantt and dependency graph re-baselined to the approved sequence. No §2 decision was changed.
+- Struck **W6-1** through: done and reviewed 2026-11-05 (python, typescript, react, security). Shipped: the questionnaire, the `AnchorPicker` over `GET /shoes`, the Next.js route handlers that proxy `/survey` and `/shoes` to FastAPI, the typed client, the payload converter and design tokens. Results is a placeholder until W6-3.
+- **$\mathbf{q}^*$ wired (§13, RESOLVED):** option (a), in `store.build_survey_row()`, not the route. Caller-supplied targets are refused. The raw `goal` is not stored, so stored targets cannot be recomputed if the mapping constants change; accepted as a trade-off.
+- **W6-3 scorer gap (§13, DECIDED):** option (a). A minimal coded scorer and W7-2 `POST /recommend` move into the thin slice. The full W3-3 stays later.
+- **MSRP first:** 0 of 30 calibration shoes carry MSRP, so W5-1d sources them before the rest of the catalogue.
+- §12 Gantt: W6-1 marked `:done`. The W4'-2 and W7-1 notes no longer say $\mathbf{q}^*$ is unwired.
+- Added the **W6-1 known gaps (deferred)** to §13.
+- Recorded three conventions in §13: the proxy error envelope, US street shoe size, and npm in `frontend/`.
+- Re-baselined the §12 Gantt (P1) and the §6 dependency graph to the approved sequence: W6-1 done, then MSRP for the 30 calibration shoes (W5-1d part, about 2d), W6-2, a minimal scorer with W7-2 (about 4d), W6-3, and slice ships. The §6 critical path follows the same order.
+- Corrected the progress header: the deferred count is **4** (W0-3, W0-1b, W2-5, W5-2), not 2 as v3.2 stated.
+- Progress 8 → 9 of 37.
+- Test counts verified: backend 1,639 passed and 15 skipped without a database; 190 Vitest; 8 Playwright in both dev and `CI=1` modes; 14 contract tests passed.
 
 **v3.2, progress update (2026-10-01)** — no plan or decision change.
 - Struck **W6-0** through: done and reviewed 2026-10-01. With W7-1 already done, both W6-1 prerequisites are met; the §13 $\mathbf{q}^*$ decision is what still gates it.

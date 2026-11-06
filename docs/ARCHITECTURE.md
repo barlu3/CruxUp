@@ -2,7 +2,7 @@
 
 A reference for the structure, data model and design of the CruxUp climbing shoe recommender. It describes the software **as implemented** and marks where the planned design has not been built yet.
 
-- **Last verified against the codebase:** 2026-10-01
+- **Last verified against the codebase:** 2026-11-05
 - **Plan, tasks and decisions of record:** [`timeline.md`](../timeline.md). Decision IDs (D1–D12) and task IDs (W0-1a, …) below refer to it.
 - **Local setup:** [`SETUP.md`](../SETUP.md)
 - **Verification:** the commands at the foot of this document re-check the claims that can be checked mechanically.
@@ -21,8 +21,8 @@ A reference for the structure, data model and design of the CruxUp climbing shoe
   - Q1 performance+stiff · Q2 comfort+stiff · Q3 comfort+soft · Q4 performance+soft
 - **Placement provenance.** A shoe's position has one of three sources, ranked by confidence: **corpus** (aggregated community discussion) > **hand** (human judgement) > **spec** (derived from manufacturer specifications). The source is stored with every placement.
 - **Build state:**
-  - **Implemented:** the product database schema, the shoe catalogue and its validator, a spec-to-placement model, the catalogue loader, environment configuration, a source-agnostic corpus collector, survey capture (§4.7), preference→target (`q*`) derivation (§4.8), an HTTP API with `POST /survey` and `GET /shoes` (§4.9), and the frontend shell with its component and end-to-end test harness (§4.10).
-  - **Not implemented:** `POST /recommend`, the recommendation scorer, NLP extraction and aggregation, evaluation, and every frontend page except the home page. These exist as documented stubs (§7). Survey capture is reachable over HTTP (§4.9), but the pure `q*` function (§4.8) is still not called by it, and no frontend route handler calls the API yet.
+  - **Implemented:** the product database schema, the shoe catalogue and its validator, a spec-to-placement model, the catalogue loader, environment configuration, a source-agnostic corpus collector, survey capture (§4.7), preference→target (`q*`) derivation and its wiring into capture (§4.8), an HTTP API with `POST /survey` and `GET /shoes` (§4.9), the frontend shell with its component and end-to-end test harness (§4.10), and the questionnaire with its browser → route handler → FastAPI path (§4.11).
+  - **Not implemented:** `POST /recommend`, the recommendation scorer, NLP extraction and aggregation, evaluation, and ranked results. The results page is a placeholder. The scorer, NLP and eval modules and `POST /recommend` exist as documented stubs (§7). The questionnaire is reachable from the browser through the route handlers (§4.11).
 - **Current binding constraint:** **no corpus source is cleared.** YouTube collection failed a terms review, Reddit access is pending, and forum terms are unreviewed (`timeline.md` §10.2; D11 reopened). The planned first release (D7) is designed to work **without** a corpus, on hand- and spec-derived placements.
 
 ---
@@ -85,7 +85,7 @@ flowchart LR
   ANC --> STO
   ANC --> SHOE & ALIAS
   STO --> SURV
-  PREF -.->|"q*, not yet wired"| STO
+  PREF -->|"q* derived in build_survey_row"| STO
   MAIN --> RSURV
   MAIN --> RSHOE
   DEPS --> RSURV
@@ -99,11 +99,13 @@ flowchart LR
   NLP[nlp/<br/>extract · aggregate]:::planned
   EVAL[eval/<br/>gearlab_map · metrics · calibrate]:::planned
   SHELL[Next.js shell<br/>layout · home page]
-  WEB[Next.js pages<br/>survey · results]:::planned
+  WEB[Next.js pages<br/>survey implemented · results placeholder]
+  PROXY[Next.js route handlers<br/>/api/survey · /api/shoes]
 
   SHELL -. links to .-> WEB
-  WEB -.->|via route handler| RSURV
-  WEB -.->|via route handler| RSHOE
+  WEB --> PROXY
+  PROXY -->|"server-side, CRUXUP_API_URL"| RSURV
+  PROXY --> RSHOE
   WEB -.-> RREC -.-> SCORE -.-> SHOE
   SCORE -.-> REC
   LAND -.-> NLP -.-> SHOE
@@ -136,12 +138,16 @@ flowchart LR
 | `backend/app/recommend/` | Fit, style, score, confidence | Stub |
 | `backend/app/nlp/` | Extraction, aggregation, lexicon, distillation | Stub |
 | `backend/app/eval/` | Calibration and metrics | Stub |
-| `backend/tests/` | Tests: 5 implemented files, 3 stubs | Partial |
+| `backend/tests/` | Tests: 6 implemented files (including `test_frontend_contract.py`), 3 stubs | Partial |
 | `backend/data/` | Local data: `gearlab/` placeholder; landing store (gitignored) | Runtime |
 | `frontend/` | The Next.js application, a self-contained npm project with its own manifest, lockfile, configuration and `.gitignore`. The repository root has no `package.json` | Implemented (§4.10) |
-| `frontend/src/app/layout.tsx`, `page.tsx`, `globals.css` | Next.js App Router root layout, home page, global stylesheet | Implemented (§4.10) |
-| `frontend/src/app/survey/`, `results/`, `lib/` | Questionnaire and results pages, API client, shared types | Stub |
-| `frontend/src/app/page.test.tsx`, `frontend/e2e/` | Component test (Vitest) and end-to-end specs (Playwright) | Implemented (§4.10, §11) |
+| `frontend/src/app/layout.tsx`, `page.tsx`, `globals.css` | Next.js App Router root layout, home page, global stylesheet with design tokens | Implemented (§4.10, §4.11) |
+| `frontend/src/app/survey/` | Questionnaire page, form and anchor picker | Implemented (§4.11) |
+| `frontend/src/app/results/` | Results placeholder and saved-token confirmation | Placeholder (W6-3) |
+| `frontend/src/app/api/survey/route.ts`, `api/shoes/route.ts`, `lib/backend-proxy.ts` | Next.js route handlers and the server-side FastAPI proxy | Implemented (§4.11) |
+| `frontend/src/app/lib/api.ts`, `types.ts`, `survey-payload.ts`, `survey-token.ts` | Browser API client, types pinned to `schema.py`, payload converter, sessionStorage key | Implemented (§4.11) |
+| `frontend/e2e/fake-backend.mjs` | Stub FastAPI for the Playwright run | Test support (§4.11) |
+| `frontend/src/app/**/*.test.ts(x)`, `frontend/e2e/*.spec.ts` | Component and unit tests (Vitest) and end-to-end specs (Playwright) | Implemented (§4.10, §4.11, §11) |
 | `frontend/package.json`, `frontend/package-lock.json` | npm manifest, scripts and committed lockfile | Implemented (§10.2) |
 | `frontend/vitest.config.mts`, `vitest.setup.ts`, `playwright.config.ts` | Test-runner configuration | Implemented (§4.10) |
 | `.github/workflows/ci.yml` | Continuous integration: two backend jobs and one frontend job | Implemented (§11) |
@@ -292,8 +298,8 @@ validation and loading path in front of them.
   - **`CatalogShoe`** (frozen dataclass) projects exactly `shoe_unique_identity`
     plus the id.
   - `resolve_anchors(good, bad, catalog)` returns resolved lists plus errors.
-- **`store.py`** — `build_survey_row()` merges both validation stages into one
-  error list; `insert_survey()` writes one row in a single transaction. CLI:
+- **`store.py`** — `build_survey_row()` derives q* from `goal` (§4.8), then merges both validation
+  stages into one error list; `insert_survey()` writes one row in a single transaction. CLI:
   `python3 backend/app/survey/store.py <payload.json> [--dry-run]`.
 
 #### Vocabularies and the schema they mirror
@@ -422,9 +428,9 @@ together: the discipline, terrain and level keys, and the output precision
 #### Not yet modelled
 - **Stiffness preference** and **downsizing/pain tolerance** are listed in §7.5
   but have no mapping and no `user_survey` column.
-- **The function is not called anywhere.** `store.py` stores `goal_x_target` /
-  `goal_y_target` exactly as supplied. The submission allow-list has no key for
-  the raw `goal` slider, and no column stores it. See §12.
+- **The raw answer is not stored.** `store.build_survey_row()` calls this
+  function and keeps only the derived targets. Nothing stores the raw `goal`, so
+  a stored target cannot be recomputed if the constants change. See §12.
 
 ### 4.9 HTTP API — `backend/app/main.py`, `backend/app/api/`
 
@@ -502,14 +508,16 @@ has two endpoints; `POST /recommend` belongs to W7-2 and is not routed.
   - no request-size limit;
   - `/docs` and `/openapi.json` stay enabled.
 
-  The Next.js route handler (W6-1) is the internet-facing layer and owns these
-  controls (§12).
-- **Not yet wired:** `preferences.target_quadrant()`. `POST /survey` stores
-  `goal_x_target` / `goal_y_target` as submitted (§12).
+  The Next.js route handlers (§4.11) are the internet-facing layer and own
+  these controls (§12).
+- **Preference targets:** `POST /survey` accepts the raw `goal`, and
+  `build_survey_row()` derives `goal_x_target` / `goal_y_target` from it (§4.8,
+  §6.4). The route code is unchanged (only its docstring), so its 422 list still equals
+  `build_survey_row()`'s.
 
 ### 4.10 Frontend shell and test harness — `frontend/`
 
-The minimum the Next.js App Router needs in order to build, plus the two test layers that later frontend work builds on (W6-0). It contains no product feature yet: the survey and results pages are placeholders (§7).
+The minimum the Next.js App Router needs in order to build, plus the two test layers that later frontend work builds on (W6-0). The product pages and the browser → backend path are described in §4.11.
 
 Everything in this section lives in `frontend/`, a self-contained npm project. Paths below are relative to it, and every `npm` command runs there.
 
@@ -518,15 +526,14 @@ Everything in this section lives in `frontend/`, a self-contained npm project. P
 |---|---|
 | `src/app/layout.tsx` | Root layout, a server component. Renders `<html lang="en">` and `<body>`, imports `globals.css`, and exports `metadata` (title `CruxUp` and a one-line description). |
 | `src/app/page.tsx` | Home page, a server component: an `<h1>`, one sentence describing the product, and a `next/link` to `/survey`. |
-| `src/app/globals.css` | `@import "tailwindcss";` only. No design tokens yet. |
-| `src/app/survey/page.tsx`, `src/app/results/page.tsx` | Placeholder pages that render `null` (W6-1, W6-3). |
-| `src/app/lib/api.ts`, `src/app/lib/types.ts` | Empty modules (`export {}`) reserved for the API client and the shared types. |
+| `src/app/globals.css` | Tailwind import and the design tokens (§4.11). |
+| `src/app/survey/page.tsx`, `src/app/results/page.tsx` | Questionnaire and results pages (§4.11). |
 | `vitest.config.mts`, `vitest.setup.ts` | Component-test configuration and per-test setup. |
 | `playwright.config.ts`, `e2e/` | End-to-end configuration and specs. |
 
 #### Build output
-- `next build` prerenders `/`, `/_not-found`, `/survey` and `/results` as static content.
-- No route handler, client component, middleware or server action exists yet. The data path in §8 (browser → route handler → FastAPI) is not yet built on the frontend side.
+- `next build` prerenders `/`, `/_not-found`, `/survey` and `/results` as static (○). The route handlers `/api/survey` and `/api/shoes` are dynamic (ƒ). Both were verified.
+- Route handlers, client components and the questionnaire exist (§4.11). There is no middleware and no server action.
 - **No web fonts are loaded.** `next/font/google` would download fonts during `next build`, which would make the build depend on network access.
 - **Module alias:** `@/*` resolves to `src/*`, in both `tsconfig.json` and Vitest (`resolve.tsconfigPaths`). Nothing imports through it yet.
 
@@ -534,7 +541,7 @@ Everything in this section lives in `frontend/`, a self-contained npm project. P
 | Layer | Tool | Location | Runs against | Covers |
 |---|---|---|---|---|
 | Component | Vitest 4 + React Testing Library | `src/**/*.test.{ts,tsx}` | jsdom | One component's rendered, accessible structure. Synchronous server components render directly. |
-| End-to-end | Playwright, Chromium only | `e2e/*.spec.ts` | A real Next.js server on port 3100 | Routing and navigation across pages, and HTTP status. |
+| End-to-end | Playwright, Chromium only | `e2e/*.spec.ts` | Next.js on port 3100 with a stub backend on port 3101 | Routing, the questionnaire's submit and error paths, and HTTP status. |
 
 - **Vitest:**
   - `vitest.setup.ts` registers the `@testing-library/jest-dom` matchers and unmounts after every test.
@@ -542,7 +549,7 @@ Everything in this section lives in `frontend/`, a self-contained npm project. P
   - Vitest includes only `src/`, and Playwright reads only `e2e/`, so neither runner picks up the other's files.
 - **Async server components** cannot be rendered by React Testing Library. They belong to the Playwright layer.
 - **Playwright server:**
-  - Locally it starts `next dev`, and an already-running server on port 3100 is reused.
+  - Locally it starts `next dev` on port 3100 and the stub backend on 3101. A server already listening on either port is reused, so stop it first (§4.11).
   - When `CI` is set, it starts `next start` against the build made by the preceding CI step, so CI exercises production output.
   - Retries (2) and `forbidOnly` apply in CI only.
   - Port 3100 avoids colliding with a development server on the default 3000.
@@ -555,6 +562,80 @@ Everything in this section lives in `frontend/`, a self-contained npm project. P
   - Next.js 16's `next build` does not run ESLint, so lint is a separate CI step.
 - **Type-check:** `tsc --noEmit` (`npm run typecheck`). `next build` also type-checks every file that `tsconfig.json` includes, test files and configs among them.
   - Its `**/*.ts`, `**/*.tsx` and `**/*.mts` include globs are scoped to `frontend/`, so the type-checker never reaches `backend/` or `.venv/`.
+
+### 4.11 Questionnaire and browser → backend path — `frontend/src/app/`
+
+The questionnaire (W6-1) and the only route from the browser to the API. The browser never addresses FastAPI: it calls same-origin route handlers, which call FastAPI on the server (§8).
+
+| File | Role |
+|---|---|
+| `api/survey/route.ts` | `POST /api/survey`: content-type check, 32 KB body cap, then forward |
+| `api/shoes/route.ts` | `GET /api/shoes`: forward the catalogue; `force-dynamic`, so it is never baked in at build |
+| `lib/backend-proxy.ts` | `forwardToBackend()`: path allow-list, timeout, status mapping, response headers |
+| `lib/api.ts` | Browser client: `submitSurvey()`, `getShoes()`, `ApiError` |
+| `lib/survey-payload.ts` | `toSurveyPayload()`: form state to the §7.1 payload |
+| `lib/types.ts` | `Shoe`, the enum arrays and `SurveyPayload`, pinned to `schema.py` by a contract test |
+| `lib/survey-token.ts` | The `sessionStorage` key for the survey token |
+| `survey/page.tsx`, `SurveyForm.tsx`, `AnchorPicker.tsx` | Questionnaire page (server component), controlled form and anchor picker (client components) |
+| `results/page.tsx`, `SurveySaved.tsx` | Results placeholder and the saved-token confirmation |
+
+#### Data path
+1. `lib/api.ts` calls `/api/survey` (POST) or `/api/shoes` (GET) on the app's own origin.
+2. The route handler checks the request, then calls `forwardToBackend(path, init, passthroughStatuses)`.
+3. `forwardToBackend` calls `${CRUXUP_API_URL}${path}` on the server. `CRUXUP_API_URL` is read at call time and defaults to `http://127.0.0.1:8000`. It has no `NEXT_PUBLIC_` prefix, so it is never inlined into the client bundle.
+4. The browser receives the upstream body for an allow-listed status, or a fixed error envelope.
+
+#### Route handler rules
+- **Allow-list, no catch-all.** The path type is the union `"/survey" | "/shoes"`, and there is one route file per endpoint.
+- **`POST /api/survey`.** 415 unless `Content-Type` is `application/json`, which blocks cross-site HTML forms. 413 over 32 KB, checked on `Content-Length` and again on the bytes actually streamed. 400 if the client aborts mid-read. Only `content-type` is forwarded, so cookies and auth headers stay out of the backend. The body is neither parsed nor validated here.
+- **Status allow-list.** `/survey` passes 201 and 422; `/shoes` passes 200. Any other upstream status becomes 502, and 503 stays 503. A connection failure or redirect becomes 503 (`redirect: "error"`). A 10 s timeout becomes 504. There is no retry, because POST is not idempotent. Discarded upstream bodies are cancelled.
+- **Responses.** Fixed `application/json`, `x-content-type-options: nosniff` and `cache-control: no-store`. The 201 carries the survey token. Errors are `{"errors": [fixed message]}`, the same shape as the backend's 422, so the client handles one error shape. This departs from the `{error: {code, message}}` shape used elsewhere, and it means error text never echoes the backend.
+- **Logging.** A failure is logged server-side with the path and error class, never the URL.
+
+#### Client (`lib/api.ts`)
+- `submitSurvey(payload)`: 201 gives `{ok: true, surveyToken}`. 422 gives `{ok: false, errors}` with the server's messages verbatim, since they are the user-actionable validation errors.
+- `getShoes()`: returns `Shoe[]`, with each element checked by a type guard rather than cast.
+- Anything else throws `ApiError` with a `code`: `unavailable` (network, 502, 503), `timeout` (504), `rejected` (400, 413, 415) or `bad_response` (unexpected status, non-JSON or wrong shape). The proxy's fixed message is shown, and the cause is preserved.
+
+#### Payload (`lib/survey-payload.ts`)
+- Unanswered selects, blank or non-finite numbers, a null goal and empty anchor lists are omitted, so no `null` or empty string is sent.
+- `goal` is sent raw, in [−1, 1]. Targets are never sent; the route refuses them.
+- Each anchor is `{brand, model, version, gender}`, plus `size` when entered. `version` is always sent (`""` for base models). `id` and `shoe_id` are never sent.
+- There is no client-side validation. `schema.py` is the only validator.
+
+#### Types (`lib/types.ts`)
+- The enum arrays are `as const` and derive the unions. `test_frontend_contract.py` parses them, and the `AnchorEntry` keys, out of the source and compares them with `schema.py` and `anchors.py`, duplicates included. An edited enum fails pytest; a dropped `SURVEY_FIELDS` entry fails `tsc`.
+- `SurveyPayload` has no `goal_x_target` / `goal_y_target` keys. They are typed `never`.
+
+#### Questionnaire
+- `survey/page.tsx` is a server component with metadata. `SurveyForm` is a controlled client component over `SurveyFormState`.
+- **Fit:** foot width, instep, toe shape, arch and heel fit, each with "Prefer not to say", plus US street shoe size. US is used because `schema.py` caps the value at 20, which rules out EU sizes.
+- **Preferences:** discipline, terrain, level, and a five-point comfort-vs-performance goal from −1 to 1. The goal is disabled until a discipline is chosen and resets when discipline is cleared, because q* is derived per discipline.
+- **Budget**, and two `AnchorPicker`s fed by `getShoes()`. A failed catalogue load is non-blocking.
+- `noValidate` is set, so input attributes are hints and the 422 path through `schema.py` remains the single validator. 422 errors render as text in a focused, labelled region (WCAG 3.3.1).
+- An in-flight ref blocks double submission. On success the token goes to `sessionStorage` under `cruxup.surveyToken` (never the URL), and the page navigates to `/results`.
+
+#### Anchor picker (`survey/AnchorPicker.tsx`)
+- A hand-built WAI-ARIA APG combobox, with no new dependency. Free text would recreate the ambiguity the server rejects, because three catalogue pairs share `(brand, model)`.
+- Filters case-insensitively across brand, model and version, one term per word. Shows at most 20 options and excludes shoes already picked. Labels read `Brand Model [Version] (gender)`.
+- Arrow keys wrap, Enter selects, and Escape closes; a second Escape clears. A click reopens. `aria-activedescendant` tracks the active option, which scrolls into view and has a non-colour cue. `aria-expanded` is true only when there are options, and a polite live region announces the count.
+- Picked shoes are listed with a labelled size input and a 44 px Remove button. Focus returns to the input after removal.
+- Catalogue strings render as text only.
+
+#### Results
+- `results/page.tsx` is a static "Your results" heading. `SurveySaved` reads the token through `useSyncExternalStore`, which renders nothing on the server and so avoids a hydration mismatch, and shows a placeholder confirmation. It stays a placeholder until W6-3.
+
+#### Design tokens (`globals.css`)
+- Semantic custom properties on `:root`, with a `prefers-color-scheme: dark` override and `color-scheme: light dark`: background, surface, foreground, muted, border, control-border, accent, accent-foreground, danger and focus-ring. Tailwind v4 maps them to utilities through `@theme inline`, which also sets a control radius and system fonts.
+- Contrast was computed for both themes. All text pairs meet WCAG AA. Control borders (`#71717a`) are 3.67–4.83:1 against their backgrounds, above the 3:1 floor for non-text UI (1.4.11). Focus uses a `:focus-visible` outline in the focus-ring colour.
+
+#### End-to-end stub backend
+- `playwright.config.ts` starts two servers. First, `e2e/fake-backend.mjs` on 127.0.0.1:3101 (Node `http`, no dependency), health-checked on `GET /shoes`. Then Next.js on 3100, with `CRUXUP_API_URL=http://127.0.0.1:3101`.
+- The stub serves `GET /shoes` with a fixture that includes Scarpa Instinct VS/VSR, La Sportiva Solution base/Comp, and a synthetic Evolv Defy mens/womens gender pair. `POST /survey` returns 201 with token `e2e-token`, or a fixed 422 for the sentinel `budget_cap_usd` of 1. Anything else returns 404.
+- The stub exists because the route handlers call FastAPI server-side. Playwright's `page.route` cannot intercept that call, and CI runs no backend.
+- `reuseExistingServer` is on locally and off in CI, so a server already on 3100 or 3101 is reused. It may point at a different backend, so stop it first (`SETUP.md` §8).
+
+Known gaps for this slice are in §12 and `timeline.md` §13 (W6-1 known gaps).
 
 ---
 
@@ -697,27 +778,22 @@ erDiagram
 
 ### 6.4 Capturing a survey
 Two entry points share one path: `POST /survey` (§4.9) and the `store.py` CLI.
-The planned questionnaire (W6-1) fills its anchor picker from `GET /shoes`, and
-submits each chosen shoe as `{brand, model, version, gender}`.
-1. `schema.validate()` checks scalar fields and shape without the catalogue. The
-   CLI runs it before opening a connection, so an invalid file is rejected
-   offline. The API runs it inside `build_survey_row()`, together with step 2.
-2. `anchors.resolve_anchors()` resolves each anchor to a `shoe.id` against the
-   catalogue, or reports an unknown, ambiguous or contradictory entry.
-3. Both error lists are merged, so a caller sees every problem in one round trip.
-   The API returns them as a 422 without writing anything.
-4. A `survey_token` is generated and the row is inserted in one transaction.
-   `--dry-run` exercises the whole path, including JSONB adaptation, then rolls back.
-5. The API returns only the `survey_token` (201). It is the sole handle on the row.
+The questionnaire (§4.11) fills its anchor picker from `GET /shoes`, and
+submits each chosen shoe as `{brand, model, version, gender}`, plus `size` when one is entered.
+1. `_prepare_submission()` derives q* (W6-1-A). A raw `goal` in [−1, 1] goes through `preferences.target_quadrant()` into `goal_x_target` / `goal_y_target`, and `goal` is removed from a copy of the payload, so it is never validated as a column or persisted. A caller-supplied target is refused, even as null.
+2. `schema.validate()` checks scalar fields and shape without the catalogue. The CLI runs it before opening a connection, so an invalid file is rejected offline. The API runs it inside `build_survey_row()`, together with step 3.
+3. `anchors.resolve_anchors()` resolves each anchor to a `shoe.id` against the catalogue, or reports an unknown, ambiguous or contradictory entry.
+4. Both error lists are merged, so a caller sees every problem in one round trip. The API returns them as a 422 without writing anything.
+5. A `survey_token` is generated and the row is inserted in one transaction. `--dry-run` exercises the whole path, including JSONB adaptation, then rolls back.
+6. The API returns only the `survey_token` (201). It is the sole handle on the row.
 
-`goal_x_target` / `goal_y_target` are currently stored exactly as submitted. The
-path does not yet call `preferences.target_quadrant()` (§4.8) to derive them.
+Stored `goal_x_target` / `goal_y_target` are always derived server-side in step 1. The raw `goal` is never stored.
 
 ### 6.5 Recommendation (planned)
-- A survey's preference answers yield a target `q*`. The derivation itself is implemented (§4.8); connecting it to capture and to scoring is not.
+- A survey's preference answers yield a target `q*`, derived at capture (§6.4). Connecting it to scoring is not implemented.
 - The scorer combines Fit, Style and Budget, gates on `size_exists` and price, and ranks the results.
 - Each result carries a confidence driven by `prior_source`, mention count and agreement, and is written as a `recommendation` row under the active `scorer_version`.
-- Apart from the `q*` function, none of this is implemented.
+- Apart from the `q*` derivation at capture, none of this is implemented.
 
 ---
 
@@ -743,8 +819,7 @@ Each stub holds a one-line docstring naming its intended responsibility and task
 | `scraping/rate_limiter.py` | Shared token bucket + backoff | Per-source quota is handled by `QuotaLedger`; a shared limiter and backoff remain planned (W0-3) |
 | `scraping/compile.py` | Ingest → normalise → snapshot | Planned (W1-full) |
 | `scraping/mentions.py` | Mention detection "via shoe_alias / NER" | **Redesign required:** most comments do not name a shoe, so attribution must come mainly from the video or thread subject, with aliases secondary (W1-3) |
-| `frontend/src/app/survey/page.tsx`, `results/page.tsx` | Questionnaire UI; ranked results with confidence | Placeholders that render `null` and build as static routes. Owned by **W6-1** and **W6-3**. The shell around them is implemented (§4.10) |
-| `frontend/src/app/lib/api.ts`, `types.ts` | Backend API client; shared types mirroring backend models | Empty modules. Under the §8 data path the client calls the app's own route handlers, never FastAPI directly (W6-1) |
+| `frontend/src/app/results/page.tsx` | Ranked results with confidence | Placeholder: a static heading and a saved-token confirmation. Owned by **W6-3**. The questionnaire is implemented (§4.11) |
 
 ---
 
@@ -761,7 +836,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - **Source-agnostic collection** (D11). No single data source is load-bearing; sources are pluggable adapters that may be unavailable.
 - **Non-commercial and advertising-free** (D11). The product carries no advertising. Using free API tiers under non-commercial terms constrains future monetisation for as long as that data is in use.
 - **Privacy by construction** (D4). No images, no biometrics, no personal identifiers; author identity exists only as a keyed pseudonym.
-- **The browser never reaches the service layer directly** (decided 2026-09-21, `timeline.md` §6). The data path is browser → Next.js route handler → FastAPI on localhost → PostgreSQL. The FastAPI end is implemented without CORS middleware (§4.9); the Next.js route handler is planned (W6-1). The frontend talks only to its own origin, so there is no CORS surface and the backend is not addressable from the client. The alternative — querying PostgreSQL from TypeScript — was rejected because it would duplicate the anchor resolution, allow-lists and domain guards that already exist and are tested in Python, leaving two validators to keep in step.
+- **The browser never reaches the service layer directly** (decided 2026-09-21, `timeline.md` §6). The data path is browser → Next.js route handler → FastAPI on localhost → PostgreSQL. The FastAPI end is implemented without CORS middleware (§4.9); the Next.js route handlers are implemented (§4.11). The frontend talks only to its own origin, so there is no CORS surface and the backend is not addressable from the client. The alternative — querying PostgreSQL from TypeScript — was rejected because it would duplicate the anchor resolution, allow-lists and domain guards that already exist and are tested in Python, leaving two validators to keep in step.
 
 ---
 
@@ -782,9 +857,9 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
     anchor brand and model. The frontend must render them as text, never as
     markup.
 - **Exposure:** the API binds to localhost and has no authentication, because
-  the survey is anonymous by design. The Next.js route handler (W6-1) is the
-  only intended client. It must forward only `/survey` and `/shoes`, and cap
-  request size (§12).
+  the survey is anonymous by design. The Next.js route handlers (§4.11) are the
+  only intended client. They forward only `/survey` and `/shoes` and cap the
+  POST body at 32 KB; the remaining gaps are in §12.
 - **Git hygiene:** the root `.gitignore` covers `.env`, `.env*.local`, `backend/data/*.sqlite3` (collected third-party content) and `.pytest_cache`. `frontend/.gitignore` covers `node_modules`, `.next`, `next-env.d.ts`, coverage and Playwright output (`test-results/`, `playwright-report/`, `blob-report/`). `frontend/package-lock.json` is committed.
 - **Dependency audit:** `npm audit` reports no known vulnerabilities at the pinned versions (§10.2).
 
@@ -859,7 +934,10 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   - **`frontend/src/app/page.test.tsx`** — 2 Vitest tests. The home page renders a level-1 heading `CruxUp` and a link whose `href` is `/survey`. Both use role-based queries.
   - **`frontend/e2e/home.spec.ts`** — 2 Playwright tests:
     - the home page has the title `CruxUp`, and its link navigates to `/survey`;
-    - `GET /survey` returns 200. The URL assertion alone would also pass on a 404, which keeps the same URL; with the survey page removed this test fails and the first still passes.
+    - the home page describes what CruxUp does.
+  - **`frontend/src/app/survey/`, `results/`, `lib/`, `api/`** — Vitest tests for the proxy and route handlers, the typed client, the payload converter, the form, the anchor picker and the saved-token confirmation. 190 tests in total across `src/`.
+  - **`frontend/e2e/survey.spec.ts`** — 6 Playwright tests against the stub backend (§4.11). They cover the questionnaire heading, a successful submit that lands on `/results` with the token kept out of the URL, and the server's 422 shown in the labelled error region.
+  - **`backend/tests/test_frontend_contract.py`** — 14 pytest tests. They parse the `types.ts` enum arrays and `AnchorEntry` keys and compare them with `schema.py` and `anchors.py`.
 - **Isolation:** no network and no database. External APIs are replaced by an injected transport; SQLite state uses temporary paths; tests that check availability explicitly remove environment credentials; an autouse fixture supplies a synthetic author key.
 - **`backend/tests/test_collector.py`** — 25 tests:
   - privacy: display names never stored; hashes keyed; key read at hash time; weak and compromised keys rejected
@@ -923,14 +1001,15 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   - `GET /shoes`: exact keys, `''` versions, string ids, the three shared
     `(brand, model)` pairs, and a round trip — every item resolves back to
     its own `id`
-- **Database-backed tests are opt-in by reachability.** Fourteen tests (ten in
-  `test_survey.py`, four in `test_api.py`) use a live PostgreSQL when one is
+- **Database-backed tests are opt-in by reachability.** Fifteen tests (ten in
+  `test_survey.py`, five in `test_api.py`) use a live PostgreSQL when one is
   available, and skip cleanly when it is not, so the default suite stays
   hermetic.
-  - **Every one but one** rolls back and asserts it left `user_survey` empty.
-  - **The exception** is `test_api.py`'s persistence test. Persistence can only
-    be shown by a real commit, observed from a second connection, so that test
-    commits and then deletes its row unconditionally.
+  - **Every one but two** rolls back and asserts it left `user_survey` empty.
+  - **The exceptions** are `test_api.py`'s two `POST /survey` persistence tests
+    (the anchor round trip and the derived-target check). Persistence can only
+    be shown by a real commit, observed from a second connection, so those tests
+    commit and then delete their rows unconditionally.
 
   CI's check that no `user_survey` rows remain is the backstop. This is the
   project's first automated database coverage; migration apply/reverse remains
@@ -942,7 +1021,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   - There is no deploy stage, because there is no hosting target.
   - The migration apply/reverse check is automated here; `SETUP.md` §3 remains the manual procedure for a local database.
 - **Stub test files:** `test_fit.py`, `test_aggregate.py`, `test_calibration.py`.
-- **Total:** backend 1,610 tests with a database reachable, and 1,596 passed plus 14 skipped without one. The same counts hold on Python 3.9 (FastAPI 0.128, Starlette 0.49) and 3.14 (FastAPI 0.141, Starlette 1.7). Frontend: 2 Vitest tests and 2 Playwright tests.
+- **Total:** backend 1,654 tests with a database reachable (the 15 DB-backed tests need PostgreSQL), and 1,639 passed plus 15 skipped without one. Frontend: 190 Vitest tests and 8 Playwright tests, passing in both dev and `CI=1` modes. Contract tests: 14 passed.
 
 ---
 
@@ -962,20 +1041,9 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   and `shoe_unique_identity` index the raw columns, so identity resolution is a
   sequential scan. Immaterial at present size; an expression index would be needed
   well past D12.
-- **`q*` is not connected to capture.** `survey/preferences.py` is implemented
-  and tested, but no caller uses it. Two further gaps have to be closed before
-  it is:
-  - The submission allow-list (`schema.ALLOWED_KEYS`) has no key for the raw
-    comfort-vs-performance `goal`, so a payload carrying one is rejected today.
-    The endpoint would have to convert `goal` to `goal_x_target` /
-    `goal_y_target` before validation, or the schema would have to accept it.
-  - `user_survey` stores the derived `q*` but not the raw `goal`. A stored
-    target therefore cannot be recomputed exactly if the mapping constants
-    change later.
-
-  `POST /survey` (W7-1) now exists but was delivered without this wiring,
-  because the choice between converting `goal` in the endpoint and adding a
-  column is still open (`timeline.md` §13).
+- **Survey row keeps no raw `goal`.** `q*` is derived at capture (§4.8), but `user_survey` stores only `goal_x_target` / `goal_y_target`, so a stored target cannot be recomputed exactly if the mapping constants change. This was accepted on 2026-11-05 as the cost of deriving server-side (`timeline.md` §13, option a). Keeping the raw answer would need a migration.
+- **Survey and proxy gaps (W6-1, `timeline.md` §13).** The unauthenticated `POST /api/survey` has no rate limit. The proxy has no request-body read timeout, so a slow client can hold a connection open (slowloris). The `server-only` guard is a comment, not a package. Pages send no CSP or other security headers; API responses do carry `nosniff` and `no-store`. The survey token stays in `sessionStorage` with no cleanup until W6-3 consumes it.
+- **DB-backed tests have not run on this branch.** The 15 tests that need PostgreSQL were skipped during W6-1 development because no database was reachable. They must pass against a local database before merge (`timeline.md` §13).
 - **Two quadrant classifiers.** `catalog/priors.quadrant()` and
   `survey/preferences.quadrant_of()` both label points on the same plane. They
   differ on axis points: the first returns `ON-AXIS`, the second raises. They
@@ -993,11 +1061,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 
   The tests now use version-stable checks, but a future release can still break
   CI without a code change.
-- **Service-edge controls live in the planned Next.js route handler.** The API
-  has no request-size limit, leaves `/docs` and `/openapi.json` enabled, and
-  has no authentication (§4.9, §9.1). This is safe only while it is reachable
-  solely through that handler. W6-1 must therefore forward only `/survey` and
-  `/shoes`, and cap request bodies well above a real submission (a few KB).
+- **Service-edge controls live in the Next.js route handlers (§4.11).** The API has no request-size limit, leaves `/docs` and `/openapi.json` enabled, and has no authentication (§4.9, §9.1). This is safe only while it is reachable solely through the handlers, which forward only `/survey` and `/shoes` and cap POST bodies at 32 KB.
 - **No connection pool.** Each request opens and closes its own connection. At
   current scale that is simpler than a pool; under load, or with multiple
   worker processes, it can approach PostgreSQL's `max_connections`.
@@ -1006,7 +1070,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - **Legacy dead code:** `backend/scraping/` (`compile.py`, `sources.py`, `NLP_training_data.txt`) and `backend/NLP/` (`processing/NLP.py`, `training/trainer.py`) are empty files from an earlier layout, duplicated by `backend/app/`.
 - **Module split mismatch:** collection sources live in `collector.py`, but stub modules for a per-source split remain under `backend/app/scraping/`.
 - **Migration edited in place:** `0001_init.sql` was changed after first use to add `prior_source`. That is acceptable before any deployment; later changes should be additive migrations.
-- **The frontend has no product pages.** The shell builds and is tested (§4.10), but `/survey` and `/results` render nothing, and `lib/api.ts` and `lib/types.ts` are empty. There are no route handlers, so the §8 data path does not exist on the frontend side yet. Tracked as **W6-1** and **W6-3**.
+- **The results page is a placeholder.** `/results` shows a saved-token confirmation only. Ranked output (W6-3) needs a scorer and `POST /recommend` (W7-2); neither is built yet (§6.5, `timeline.md` §13).
 - **End-to-end tests use different servers locally and in CI.** Local runs use `next dev` and CI uses `next start`, so behaviour that differs between development and production builds (for example prefetching, or dev-only warnings) can pass in one and fail in the other. CI is the authoritative run. To reproduce it locally, run `npm run build` and then `CI=1 npm run test:e2e` in `frontend/`.
 - **A coding-agent environment makes `next dev` write files.** When Next.js 16.3 detects that it is running inside a coding agent (through environment variables such as `AI_AGENT` or `CLAUDECODE`), `next dev` creates `AGENTS.md` and `CLAUDE.md` in its project directory, `frontend/`. If a `CLAUDE.md` already exists there, it inserts its own rules block into it. Neither file is part of the repository, and `next start` and `next build` do not do this.
 - **Documentation stubs:** `docs/eval-methodology.md` and `docs/lexicon-guide.md` are placeholders, and `README.md` is a single line.
@@ -1019,14 +1083,15 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 These commands re-check the mechanically verifiable claims in this document:
 
 ```bash
-python3 -m pytest backend/tests/ -q                              # 1610 passed (database reachable)
+python3 -m pytest backend/tests/ -q                              # 1654 passed with a database reachable
 python3 -m pytest backend/tests/test_collector.py -q             # 25 passed
 python3 -m pytest backend/tests/test_priors.py -q                # 39 passed
-python3 -m pytest backend/tests/test_survey.py -q                # 155 passed
+python3 -m pytest backend/tests/test_survey.py -q                # 168 passed, 10 skipped without a database (178 with one)
 python3 -m pytest backend/tests/test_preferences.py -q           # 1334 passed
-python3 -m pytest backend/tests/test_api.py -q                   # 57 passed (4 skip without a database)
+python3 -m pytest backend/tests/test_api.py -q                   # 59 passed, 5 skipped without a database (64 with one)
+python3 -m pytest backend/tests/test_frontend_contract.py -q    # 14 passed
 DATABASE_URL=postgresql://localhost:1/nope \
-  python3 -m pytest backend/tests/ -q                            # 1596 passed, 14 skipped — the suite is hermetic
+  python3 -m pytest backend/tests/ -q                            # 1639 passed, 15 skipped — the suite is hermetic
 (cd backend && uvicorn app.main:app --port 8000) &                # then, in another shell:
 curl -s localhost:8000/shoes | python3 -c "import json,sys; print(sorted(json.load(sys.stdin)[0]))"   # ['brand', 'gender', 'id', 'model', 'version']
 curl -s -H 'content-type: application/json' -d '{"email":"x"}' localhost:8000/survey   # 422 {"errors": ["unknown key(s) ['email']: ..."]}
@@ -1039,9 +1104,9 @@ cd frontend                                                      # every npm com
 npm ci                                                           # installs exactly what package-lock.json records
 npm run lint                                                     # no errors, no warnings
 npm run typecheck                                                # clean
-npm test                                                         # 2 passed (frontend/src/app/page.test.tsx)
-npm run build                                                    # prerenders /, /_not-found, /results, /survey as static
-npm run test:e2e                                                 # 2 passed (local, next dev)
-CI=1 npm run test:e2e                                            # 2 passed (production build, next start) — run after npm run build
+npm test                                                         # 190 passed
+npm run build                                                    # prerenders /, /_not-found, /survey and /results as static (○); /api/survey and /api/shoes are dynamic (ƒ)
+npm run test:e2e                                                 # 8 passed (local, next dev)
+CI=1 npm run test:e2e                                            # 8 passed (production build, next start) — run after npm run build
 npm audit                                                        # found 0 vulnerabilities
 ```
