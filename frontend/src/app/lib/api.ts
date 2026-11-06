@@ -99,11 +99,12 @@ export type GetRecommendationsResult =
   | { status: "ok"; ranking: RecommendResponse }
   | { status: "survey_not_found" };
 
-export async function getRecommendations(token: string): Promise<GetRecommendationsResult> {
+export async function getRecommendations(token: string, signal?: AbortSignal): Promise<GetRecommendationsResult> {
   const response = await request("/api/recommend", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ survey_token: token }),
+    signal,
   });
 
   // 422 means the stored token is malformed, so it can never match a survey either.

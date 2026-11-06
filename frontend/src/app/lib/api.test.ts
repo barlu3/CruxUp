@@ -538,6 +538,15 @@ describe("getRecommendations", () => {
     await expect(getRecommendations("tok-1")).rejects.toMatchObject({ code: "bad_response" });
   });
 
+  it("passes the abort signal to fetch", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(validRanking, 200));
+    const controller = new AbortController();
+
+    await getRecommendations("tok-1", controller.signal);
+
+    expect(fetchMock.mock.calls[0][1].signal).toBe(controller.signal);
+  });
+
   it("accepts a null target", async () => {
     const body = { ...validRanking, target: null };
     fetchMock.mockResolvedValue(jsonResponse(body, 200));
