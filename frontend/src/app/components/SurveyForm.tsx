@@ -1,9 +1,10 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
-import { fetchShoes, submitSurvey } from "../lib/api";
+import { SURVEY_TOKEN_KEY, fetchShoes, submitSurvey } from "../lib/api";
 import { interpretErrors } from "../lib/errors";
 import type { SizeProblem } from "../lib/errors";
 import { buildPayload, emptyFormState } from "../lib/payload";
@@ -109,11 +110,10 @@ export function SurveyForm() {
   const [catalogue, setCatalogue] = useState<CatalogueStatus>("loading");
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
-  const [done, setDone] = useState(false);
   const [attempt, setAttempt] = useState(0);
   /** shoe id -> id of its error message; cleared per shoe when its size is edited. */
   const [sizeErrors, setSizeErrors] = useState<Record<string, string>>({});
-  const confirmationRef = useRef<HTMLHeadingElement>(null);
+  const router = useRouter();
   const alertRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -138,10 +138,6 @@ export function SurveyForm() {
   };
 
   useEffect(() => {
-    if (done) confirmationRef.current?.focus();
-  }, [done]);
-
-  useEffect(() => {
     if (failure) alertRef.current?.focus();
   }, [failure]);
 
@@ -158,9 +154,18 @@ export function SurveyForm() {
     setFailure(null);
     setSizeErrors({});
     const result = await submitSurvey(buildPayload(state));
+    if (result.kind === "created") {
+      // The token goes in this tab's storage, never the URL; submit stays busy until /results loads.
+      try {
+        sessionStorage.setItem(SURVEY_TOKEN_KEY, result.surveyToken);
+      } catch {
+        // Storage blocked: the answers are saved, but /results can only offer the survey again.
+      }
+      router.push("/results");
+      return;
+    }
     setPending(false);
-    if (result.kind === "created") setDone(true);
-    else if (result.kind === "invalid") {
+    if (result.kind === "invalid") {
       const { sizeProblems, unmatched } = interpretErrors(
         result.errors,
         state.known_good_shoes,
@@ -170,17 +175,6 @@ export function SurveyForm() {
       setFailure({ kind: "invalid", sizeProblems, unmatched });
     }
     else setFailure({ kind: "generic" });
-  }
-
-  if (done) {
-    return (
-      <div role="status" className="mt-6">
-        <h2 ref={confirmationRef} tabIndex={-1} className="text-xl font-semibold">
-          Thank you, your answers are saved.
-        </h2>
-        <p className="mt-2">We will use them to match you with climbing shoes.</p>
-      </div>
-    );
   }
 
   const onSizeEdit = (shoeId: string) =>

@@ -9,6 +9,14 @@ import { PLOT_PADDING, VIEW_SIZE, toChartPoint } from "../lib/quadrant-scale";
 import { shoeName } from "../lib/shoe";
 import type { PriorSource, QuadrantShoe } from "../lib/types";
 
+interface QuadrantChartProps {
+  shoes: QuadrantShoe[];
+  target?: { x: number; y: number };
+  highlightIds?: readonly string[];
+}
+
+type PointState = "default" | "highlighted" | "dimmed";
+
 export const PROVENANCE_LABEL: Record<PriorSource, string> = {
   hand: "Hand-placed",
   spec: "Spec-derived",
@@ -26,6 +34,10 @@ const HIT_RADIUS = 20;
 const HOVER_HIDE_DELAY_MS = 300;
 const NEUTRAL_THRESHOLD = 0.05;
 const FOCUS_RING_RADIUS = 11;
+const TARGET_ARM = 10;
+// Rough advance of an 18-unit sans glyph, used to put a label on the side of its point where it fits.
+const LABEL_CHAR_WIDTH = 10;
+const LABEL_GAP = 6;
 const PLOT_END = VIEW_SIZE - PLOT_PADDING;
 const CENTER = VIEW_SIZE / 2;
 // Text rows in the padding around the frame, sized for 18-unit text.
@@ -36,7 +48,7 @@ const TOP_ROW_SOFT = TOP_ROW_LINE_1 - LINE_HEIGHT;
 const BOTTOM_ROW_LINE_1 = PLOT_END + 20;
 const AXIS_ROW = BOTTOM_ROW_LINE_1 + 2 * LINE_HEIGHT + 2;
 
-export function QuadrantChart({ shoes }: { shoes: QuadrantShoe[] }) {
+export function QuadrantChart({ shoes, target, highlightIds }: QuadrantChartProps) {
   const baseId = useId();
   const titleId = `${baseId}-title`;
   const instructionsId = `${baseId}-instructions`;
@@ -49,6 +61,8 @@ export function QuadrantChart({ shoes }: { shoes: QuadrantShoe[] }) {
   const hideTimerRef = useRef<number | undefined>(undefined);
 
   const ordered = useMemo(() => sortShoes(shoes), [shoes]);
+  const highlightSet = useMemo(() => new Set(highlightIds), [highlightIds]);
+  const isHighlightActive = highlightSet.size > 0;
   const activeId = hoveredId ?? focusedId;
   const tooltipShoe = isTooltipDismissed ? undefined : ordered.find((shoe) => shoe.id === activeId);
 
@@ -80,6 +94,12 @@ export function QuadrantChart({ shoes }: { shoes: QuadrantShoe[] }) {
   const hasHand = shoes.some((s) => s.prior_source === "hand");
   const hasSpec = shoes.some((s) => s.prior_source === "spec");
   const hasAnchor = shoes.some((s) => s.is_anchor);
+  const hasHighlighted = isHighlightActive && shoes.some((s) => highlightSet.has(s.id));
+
+  function toState(shoe: QuadrantShoe): PointState {
+    if (!isHighlightActive) return "default";
+    return highlightSet.has(shoe.id) ? "highlighted" : "dimmed";
+  }
 
   function handleKeyDown(event: KeyboardEvent<SVGGElement>, index: number) {
     const lastIndex = ordered.length - 1;
@@ -131,8 +151,13 @@ export function QuadrantChart({ shoes }: { shoes: QuadrantShoe[] }) {
           </g>
           {ordered.map((shoe, index) => {
             const { cx, cy } = toChartPoint(shoe.x, shoe.y);
+            const state = toState(shoe);
             const radius = shoe.is_anchor ? ANCHOR_RADIUS : MARK_RADIUS;
-            const isLabelLeft = shoe.x > 0.6;
+            const labelName = toShortName(shoe);
+            const isLabeled = shoe.is_anchor || state === "highlighted";
+            const roomRight = PLOT_END - (cx + radius + LABEL_GAP);
+            const roomLeft = cx - radius - LABEL_GAP - PLOT_PADDING;
+            const isLabelLeft = labelName.length * LABEL_CHAR_WIDTH > roomRight && roomLeft > roomRight;
             return (
               <g
                 key={shoe.id}
@@ -142,9 +167,10 @@ export function QuadrantChart({ shoes }: { shoes: QuadrantShoe[] }) {
                 }}
                 role="img"
                 aria-roledescription="shoe"
-                aria-label={toPointName(shoe)}
+                aria-label={toPointName(shoe, state === "highlighted")}
                 tabIndex={shoe.id === effectiveTabStopId ? 0 : -1}
-                className={`outline-none ${shoe.prior_source === "spec" ? "fill-background" : "fill-foreground"}`}
+                data-state={state === "default" ? undefined : state}
+                className={`outline-none ${toFillClass(shoe, state)}`}
                 onKeyDown={(event) => handleKeyDown(event, index)}
                 onFocus={() => {
                   setTabStopId(shoe.id);
@@ -160,17 +186,17 @@ export function QuadrantChart({ shoes }: { shoes: QuadrantShoe[] }) {
                 {focusedId === shoe.id && (
                   <circle cx={cx} cy={cy} r={FOCUS_RING_RADIUS} strokeWidth={2} className="fill-none stroke-focus-ring" />
                 )}
-                <Mark shoe={shoe} cx={cx} cy={cy} r={radius} />
-                {shoe.is_anchor && (
+                <Mark shoe={shoe} state={state} cx={cx} cy={cy} r={radius} />
+                {isLabeled && (
                   <text
-                    x={isLabelLeft ? cx - radius - 6 : cx + radius + 6}
+                    x={isLabelLeft ? cx - radius - LABEL_GAP : cx + radius + LABEL_GAP}
                     y={cy}
                     textAnchor={isLabelLeft ? "end" : "start"}
                     dominantBaseline="middle"
                     strokeWidth={4}
                     className="fill-foreground stroke-background text-lg [paint-order:stroke]"
                   >
-                    {toShortName(shoe)}
+                    {labelName}
                   </text>
                 )}
               </g>
@@ -180,19 +206,21 @@ export function QuadrantChart({ shoes }: { shoes: QuadrantShoe[] }) {
           <g aria-hidden="true">
             {ordered.map((shoe) => {
               const { cx, cy } = toChartPoint(shoe.x, shoe.y);
+              const state = toState(shoe);
               return (
                 <g
                   key={shoe.id}
-                  className={shoe.prior_source === "spec" ? "fill-background" : "fill-foreground"}
+                  className={toFillClass(shoe, state)}
                   onMouseEnter={() => handlePointerEnter(shoe.id)}
                   onMouseLeave={handlePointerLeave}
                   onPointerLeave={handlePointerLeave}
                 >
-                  <Mark shoe={shoe} cx={cx} cy={cy} r={shoe.is_anchor ? ANCHOR_RADIUS : MARK_RADIUS} />
+                  <Mark shoe={shoe} state={state} cx={cx} cy={cy} r={shoe.is_anchor ? ANCHOR_RADIUS : MARK_RADIUS} />
                 </g>
               );
             })}
           </g>
+          {target && <Target x={target.x} y={target.y} />}
         </svg>
         <p id={instructionsId} className="sr-only">
           Use the arrow keys to move between shoes from most comfort-focused to most
@@ -201,6 +229,7 @@ export function QuadrantChart({ shoes }: { shoes: QuadrantShoe[] }) {
         {tooltipShoe && (
           <Tooltip
             shoe={tooltipShoe}
+            isHighlighted={toState(tooltipShoe) === "highlighted"}
             onMouseEnter={() => window.clearTimeout(hideTimerRef.current)}
             onMouseLeave={handlePointerLeave}
           />
@@ -211,6 +240,8 @@ export function QuadrantChart({ shoes }: { shoes: QuadrantShoe[] }) {
         {hasSpec && <LegendItem label={PROVENANCE_LABEL.spec} swatch={<Swatch kind="spec" />} />}
         {hasCorpus && <LegendItem label={PROVENANCE_LABEL.corpus} swatch={<Swatch kind="corpus" />} />}
         {hasAnchor && <LegendItem label={ANCHOR_LABEL} swatch={<Swatch kind="anchor" />} />}
+        {target && <LegendItem label="Your target" swatch={<Swatch kind="target" />} />}
+        {hasHighlighted && <LegendItem label="Highlighted" swatch={<Swatch kind="highlighted" />} />}
       </ul>
     </figure>
   );
@@ -254,23 +285,37 @@ function Frame() {
 }
 
 // Provenance is shape and fill, never colour alone: hand filled, spec hollow, corpus square.
-function Mark({ shoe, cx, cy, r }: { shoe: QuadrantShoe; cx: number; cy: number; r: number }) {
-  const strokeClass = shoe.is_anchor || shoe.prior_source === "spec" ? "stroke-foreground" : "stroke-background";
-  const strokeWidth = shoe.is_anchor ? 3 : 2;
+function Mark({ shoe, state, cx, cy, r }: { shoe: QuadrantShoe; state: PointState; cx: number; cy: number; r: number }) {
+  const strokeClass = toStrokeClass(shoe, state);
+  const strokeWidth = shoe.is_anchor || (state === "highlighted" && shoe.prior_source === "spec") ? 3 : 2;
   if (shoe.prior_source === "corpus") {
     return <rect x={cx - r} y={cy - r} width={2 * r} height={2 * r} strokeWidth={strokeWidth} className={strokeClass} />;
   }
   return <circle cx={cx} cy={cy} r={r} strokeWidth={strokeWidth} className={strokeClass} />;
 }
 
+// pointer-events-none: drawn above every point, it must not take the pointer from a mark under it.
+function Target({ x, y }: { x: number; y: number }) {
+  const { cx, cy } = toChartPoint(x, y);
+  return (
+    <g role="img" aria-label="Your target" className="pointer-events-none stroke-accent" strokeWidth={2}>
+      <circle cx={cx} cy={cy} r={TARGET_ARM - 3} className="fill-none" />
+      <line x1={cx - TARGET_ARM - 4} y1={cy} x2={cx + TARGET_ARM + 4} y2={cy} />
+      <line x1={cx} y1={cy - TARGET_ARM - 4} x2={cx} y2={cy + TARGET_ARM + 4} />
+    </g>
+  );
+}
+
 // aria-hidden because it repeats the point's accessible name. It still takes the pointer, so it
 // stays open while hovered (WCAG 1.4.13); the hide delay bridges the gap from the point.
 function Tooltip({
   shoe,
+  isHighlighted,
   onMouseEnter,
   onMouseLeave,
 }: {
   shoe: QuadrantShoe;
+  isHighlighted: boolean;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
 }) {
@@ -287,7 +332,7 @@ function Tooltip({
       className={`absolute z-10 w-max max-w-64 rounded-control border border-control-border bg-surface px-3 py-2 text-sm text-foreground ${horizontal} ${vertical}`}
     >
       <strong className="block">{shoeName(shoe)}</strong>
-      {toDetailSentences(shoe).map((sentence) => (
+      {toDetailSentences(shoe, isHighlighted).map((sentence) => (
         <span key={sentence} className="block">
           {sentence}
         </span>
@@ -305,13 +350,21 @@ function LegendItem({ label, swatch }: { label: string; swatch: ReactNode }) {
   );
 }
 
-function Swatch({ kind }: { kind: "hand" | "spec" | "corpus" | "anchor" }) {
+function Swatch({ kind }: { kind: "hand" | "spec" | "corpus" | "anchor" | "target" | "highlighted" }) {
   return (
     <svg viewBox="0 0 20 20" width={20} height={20} aria-hidden="true" className="shrink-0">
       {kind === "hand" && <circle cx={10} cy={10} r={5} strokeWidth={2} className="fill-foreground stroke-background" />}
       {kind === "spec" && <circle cx={10} cy={10} r={5} strokeWidth={2} className="fill-background stroke-foreground" />}
       {kind === "corpus" && <rect x={5} y={5} width={10} height={10} strokeWidth={2} className="fill-foreground stroke-background" />}
       {kind === "anchor" && <circle cx={10} cy={10} r={7} strokeWidth={3} className="fill-foreground stroke-foreground" />}
+      {kind === "highlighted" && <circle cx={10} cy={10} r={5} strokeWidth={2} className="fill-accent stroke-background" />}
+      {kind === "target" && (
+        <g className="stroke-accent" strokeWidth={2}>
+          <circle cx={10} cy={10} r={4} className="fill-none" />
+          <line x1={1} y1={10} x2={19} y2={10} />
+          <line x1={10} y1={1} x2={10} y2={19} />
+        </g>
+      )}
     </svg>
   );
 }
@@ -322,17 +375,35 @@ function sortShoes(shoes: QuadrantShoe[]): QuadrantShoe[] {
   );
 }
 
-function toPointName(shoe: QuadrantShoe): string {
-  return [`${shoeName(shoe)}.`, ...toDetailSentences(shoe)].join(" ");
+// Fill is set on the group so the mark inherits it; the hit area and focus ring override it.
+function toFillClass(shoe: QuadrantShoe, state: PointState): string {
+  // Provenance survives a highlight: spec points stay hollow.
+  if (shoe.prior_source === "spec") return "fill-background";
+  if (state === "highlighted") return "fill-accent";
+  // With a highlight active every point is accent or muted, so muted is only ever compared
+  // against accent, never against the default foreground.
+  return state === "dimmed" ? "fill-muted" : "fill-foreground";
+}
+
+function toStrokeClass(shoe: QuadrantShoe, state: PointState): string {
+  if (shoe.prior_source === "spec" && state === "highlighted") return "stroke-accent";
+  if (shoe.is_anchor) return "stroke-foreground";
+  if (shoe.prior_source === "spec") return state === "dimmed" ? "stroke-muted" : "stroke-foreground";
+  return "stroke-background";
+}
+
+function toPointName(shoe: QuadrantShoe, isHighlighted: boolean): string {
+  return [`${shoeName(shoe)}.`, ...toDetailSentences(shoe, isHighlighted)].join(" ");
 }
 
 // Shared by the accessible name and the tooltip so both say the same thing.
-function toDetailSentences(shoe: QuadrantShoe): string[] {
+function toDetailSentences(shoe: QuadrantShoe, isHighlighted: boolean): string[] {
   return [
     `Comfort–performance ${formatAxisValue(shoe.x)}, ${toSide(shoe.x, "comfort", "performance")}.`,
     `Stiff–soft ${formatAxisValue(shoe.y)}, ${toSide(shoe.y, "stiff", "soft")}.`,
     `${PROVENANCE_LABEL[shoe.prior_source]}.`,
     ...(shoe.is_anchor ? [`${ANCHOR_LABEL}.`] : []),
+    ...(isHighlighted ? ["Highlighted."] : []),
   ];
 }
 

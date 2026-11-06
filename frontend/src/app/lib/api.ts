@@ -13,6 +13,9 @@ import type {
   SurveyPayload,
 } from "./types";
 
+/** sessionStorage key for the survey token handed from /survey to /results. */
+export const SURVEY_TOKEN_KEY = "cruxup.surveyToken";
+
 export type SubmitResult =
   | { kind: "created"; surveyToken: string }
   | { kind: "invalid"; errors: string[] }
