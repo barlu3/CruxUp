@@ -1022,7 +1022,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 ## 11. Testing architecture
 
 - **Runners:** `pytest` for the backend, run from the repository root: `python3 -m pytest backend/tests/ -q`. Vitest and Playwright for the frontend (§4.10), run from `frontend/`: `npm test` and `npm run test:e2e`.
-- **Frontend tests** (paths under `frontend/`): 251 Vitest tests in 15 files and 22 Playwright tests in 3 files.
+- **Frontend tests** (paths under `frontend/`): 254 Vitest tests in 15 files and 24 Playwright tests in 3 files.
   - **`src/app/page.test.tsx`** — 3 Vitest tests. The home page renders a level-1 heading `CruxUp`, a link whose `href` is `/survey`, and a link whose `href` is `/quadrant`. All use role-based queries.
   - **`src/app/survey/page.test.tsx`** — 1 test: the page's metadata title, and that it renders a single `<h1>`.
   - **`src/app/lib/payload.test.ts`** — 8 tests (the eighth checks that chosen shoes keep their order, which the error links rely on):
@@ -1073,7 +1073,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
     - the button reads "Sending…" and a second submit is ignored while pending, then the button is re-enabled;
     - the catalogue request is aborted on unmount;
     - general and catalogue failures, and "Try again", are handled.
-  - **`src/app/components/QuadrantChart.test.tsx`** — 58 tests: one point per shoe; quadrant and axis labels placed outside the frame and anchored inside the viewBox; anchors labelled and named as section-3 reference shoes; spec points hollow and hand points filled; provenance and "neutral" in accessible names; the hit area; the legend lists only encodings present; the empty state; the roving tabindex, arrow, Home and End keys; and the tooltip's show and hide paths (focus, hover, mouseleave, pointerleave, outside pointer-down, blur, Escape) and its `aria-hidden`.
+  - **`src/app/components/QuadrantChart.test.tsx`** — 61 tests: one point per shoe; quadrant and axis labels placed outside the frame and anchored inside the viewBox; anchors labelled and named as section-3 reference shoes; spec points hollow and hand points filled; provenance and "neutral" in accessible names; the hit area; the legend lists only encodings present; the empty state; the roving tabindex, arrow, Home and End keys; and the tooltip's show and hide paths (focus, hover, mouseleave and pointerleave after the hide delay, outside pointer-down, blur, Escape), that it stays open while the pointer is over it and hides once the pointer leaves it, and its `aria-hidden`.
   - **`src/app/components/QuadrantTable.test.tsx`** — 11 tests: caption, scroll region, one row header per quadrant, Drago in the Q4 group with its sr-only quadrant cue, two-decimal and true-minus values, the anchor flag, and "No shoes".
   - **`src/app/quadrant/QuadrantView.test.tsx`** — 12 tests: the loading status stays mounted and empties; chart and table render after a 200 under `h2`-labelled sections; a 502 or a malformed body shows the plain-language alert; "Try again" recovers; an unmount before the answer logs nothing. **`quadrant/page.test.tsx`** — 1 test: the `<h1>`.
   - **`e2e/home.spec.ts`** — 2 Playwright tests:
@@ -1086,7 +1086,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
     - every browser request goes to the app's own origin;
     - an axe WCAG 2 A/AA scan finds no violations in six states (initial; list open; shoe selected; 422 shown; "Technical details" open; confirmation);
     - `/api/docs`, `/api/openapi.json` and `/api/redoc` return 404, and `GET /api/survey` is refused.
-  - **`e2e/quadrant.spec.ts`** — 9 Playwright tests, against the mock API's `GET /quadrant`: the home link lands on `/quadrant`; the Q4 label is drawn and the table lists Scarpa Drago under Q4; Tab then ArrowRight shows the second shoe's tooltip; hover shows a tooltip and Escape hides it; no sideways scroll at 375 px; every browser request goes to the app's own origin; and an axe WCAG 2 A/AA scan with a tooltip shown finds no violations.
+  - **`e2e/quadrant.spec.ts`** — 11 Playwright tests, against the mock API's `GET /quadrant`: the home link lands on `/quadrant`; the Q4 label is drawn and the table lists Scarpa Drago under Q4; Tab then ArrowRight shows the second shoe's tooltip; hover shows a tooltip, stays open while the pointer is over it, and Escape hides it; hovering the visible edge of Defy's mark opens Defy's tooltip although Elektra shares its coordinates; no sideways scroll at 375 px; every browser request goes to the app's own origin; and an axe WCAG 2 A/AA scan with a tooltip shown finds no violations.
 - **Isolation:** no network and no database. External APIs are replaced by an injected transport; SQLite state uses temporary paths; tests that check availability explicitly remove environment credentials; an autouse fixture supplies a synthetic author key.
 - **`backend/tests/test_collector.py`** — 25 tests:
   - privacy: display names never stored; hashes keyed; key read at hash time; weak and compromised keys rejected
@@ -1184,7 +1184,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   - There is no deploy stage, because there is no hosting target.
   - The migration apply/reverse check is automated here; `SETUP.md` §3 remains the manual procedure for a local database.
 - **Stub test files:** `test_fit.py`, `test_aggregate.py`, `test_calibration.py`.
-- **Total:** backend 1,731 tests with a database reachable, and 1,713 passed plus 18 skipped without one (measured 2026-11-06 on Python 3.12; the 3.9 and 3.14 runs predate W6-2). Frontend: 251 Vitest tests and 22 Playwright tests.
+- **Total:** backend 1,731 tests with a database reachable, and 1,713 passed plus 18 skipped without one (measured 2026-11-06 on Python 3.12; the 3.9 and 3.14 runs predate W6-2). Frontend: 254 Vitest tests and 24 Playwright tests.
 
 ---
 
@@ -1303,7 +1303,7 @@ cd frontend                                                      # every npm com
 npm ci                                                           # installs exactly what package-lock.json records
 npm run lint                                                     # no errors, no warnings
 npm run typecheck                                                # clean
-npm run test:coverage                                            # 251 passed in 15 files; coverage thresholds met
+npm run test:coverage                                            # 254 passed in 15 files; coverage thresholds met
 npm run build                                                    # static: /, /_not-found, /quadrant, /results, /survey; dynamic: /api/quadrant, /api/shoes, /api/survey
 npm run test:e2e                                                 # 22 passed (local, next dev + mock API on :8100)
 CI=1 npm run test:e2e                                            # 22 passed (production build, next start) — run after npm run build
