@@ -45,6 +45,15 @@ test("hovering the visible edge of Defy's mark shows Defy's tooltip, not Elektra
   await expect(tooltip(page)).toContainText("Evolv Defy (men's)");
 });
 
+test("the tooltip stays open while the pointer is over it", async ({ page }) => {
+  await openQuadrant(page);
+  await hoverMark(page, /^Scarpa Drago/);
+  await tooltip(page).hover();
+  // Longer than the chart's 300 ms hide delay, so a tooltip that ignored the pointer would be gone.
+  await page.waitForTimeout(600);
+  await expect(tooltip(page)).toContainText("Scarpa Drago (unisex)");
+});
+
 test("Escape hides a shown tooltip", async ({ page }) => {
   await openQuadrant(page);
   await hoverMark(page, /^Scarpa Drago/);

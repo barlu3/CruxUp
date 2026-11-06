@@ -22,6 +22,8 @@ const ANCHOR_RADIUS = 7;
 // 40 * 328 / 480 = ~27px >= 24px. Overlap in dense clusters is fine: the marks are repeated
 // above every hit area, and the keyboard reaches every shoe.
 const HIT_RADIUS = 20;
+// Long enough to cross the 0.75rem gap from a point to its tooltip (WCAG 1.4.13 hoverable).
+const HOVER_HIDE_DELAY_MS = 300;
 const NEUTRAL_THRESHOLD = 0.05;
 const FOCUS_RING_RADIUS = 11;
 const PLOT_END = VIEW_SIZE - PLOT_PADDING;
@@ -44,6 +46,7 @@ export function QuadrantChart({ shoes }: { shoes: QuadrantShoe[] }) {
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [isTooltipDismissed, setIsTooltipDismissed] = useState(false);
+  const hideTimerRef = useRef<number | undefined>(undefined);
 
   const ordered = useMemo(() => sortShoes(shoes), [shoes]);
   const activeId = hoveredId ?? focusedId;
@@ -91,12 +94,14 @@ export function QuadrantChart({ shoes }: { shoes: QuadrantShoe[] }) {
   }
 
   function handlePointerEnter(id: string) {
+    window.clearTimeout(hideTimerRef.current);
     setHoveredId(id);
     setIsTooltipDismissed(false);
   }
 
   function handlePointerLeave() {
-    setHoveredId(null);
+    window.clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = window.setTimeout(() => setHoveredId(null), HOVER_HIDE_DELAY_MS);
   }
 
   return (
@@ -193,7 +198,13 @@ export function QuadrantChart({ shoes }: { shoes: QuadrantShoe[] }) {
           Use the arrow keys to move between shoes from most comfort-focused to most
           performance-focused; Home and End jump to the ends; Escape hides the details.
         </p>
-        {tooltipShoe && <Tooltip shoe={tooltipShoe} />}
+        {tooltipShoe && (
+          <Tooltip
+            shoe={tooltipShoe}
+            onMouseEnter={() => window.clearTimeout(hideTimerRef.current)}
+            onMouseLeave={handlePointerLeave}
+          />
+        )}
       </div>
       <ul aria-label="Legend" className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-foreground">
         {hasHand && <LegendItem label={PROVENANCE_LABEL.hand} swatch={<Swatch kind="hand" />} />}
@@ -252,9 +263,17 @@ function Mark({ shoe, cx, cy, r }: { shoe: QuadrantShoe; cx: number; cy: number;
   return <circle cx={cx} cy={cy} r={r} strokeWidth={strokeWidth} className={strokeClass} />;
 }
 
-// aria-hidden and a duplicate of the point's accessible name, so pointer-events-none is
-// acceptable under WCAG 1.4.13: nothing here needs to be hoverable or reachable.
-function Tooltip({ shoe }: { shoe: QuadrantShoe }) {
+// aria-hidden because it repeats the point's accessible name. It still takes the pointer, so it
+// stays open while hovered (WCAG 1.4.13); the hide delay bridges the gap from the point.
+function Tooltip({
+  shoe,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  shoe: QuadrantShoe;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+}) {
   const { cx, cy } = toChartPoint(shoe.x, shoe.y);
   const horizontal = shoe.x > 0.5 ? "-translate-x-[calc(100%+0.75rem)]" : "translate-x-3";
   const vertical = shoe.y > 0.7 ? "translate-y-3" : "-translate-y-[calc(100%+0.75rem)]";
@@ -263,7 +282,9 @@ function Tooltip({ shoe }: { shoe: QuadrantShoe }) {
       role="tooltip"
       aria-hidden="true"
       style={{ left: `${(cx / VIEW_SIZE) * 100}%`, top: `${(cy / VIEW_SIZE) * 100}%` }}
-      className={`pointer-events-none absolute z-10 w-max max-w-64 rounded-control border border-control-border bg-surface px-3 py-2 text-sm text-foreground ${horizontal} ${vertical}`}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      className={`absolute z-10 w-max max-w-64 rounded-control border border-control-border bg-surface px-3 py-2 text-sm text-foreground ${horizontal} ${vertical}`}
     >
       <strong className="block">{shoeName(shoe)}</strong>
       {toDetailSentences(shoe).map((sentence) => (

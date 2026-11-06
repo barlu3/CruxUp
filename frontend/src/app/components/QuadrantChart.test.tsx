@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PLOT_PADDING, VIEW_SIZE } from "../lib/quadrant-scale";
 
@@ -250,8 +250,23 @@ describe("QuadrantChart keyboard interaction", () => {
 });
 
 describe("QuadrantChart tooltip", () => {
+  // A pointer leaving hides the tooltip after a delay, so the hide paths need the clock.
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   function getTooltip() {
     return screen.getByRole("tooltip", { hidden: true });
+  }
+
+  function finishHideDelay() {
+    act(() => {
+      vi.runAllTimers();
+    });
   }
 
   it("is hidden by default", () => {
@@ -275,6 +290,7 @@ describe("QuadrantChart tooltip", () => {
     render(<QuadrantChart shoes={SHOES} />);
     fireEvent.mouseEnter(getPoint("Scarpa Drago"));
     fireEvent.mouseLeave(getPoint("Scarpa Drago"));
+    finishHideDelay();
     expect(screen.queryByRole("tooltip", { hidden: true })).not.toBeInTheDocument();
   });
 
@@ -282,6 +298,35 @@ describe("QuadrantChart tooltip", () => {
     render(<QuadrantChart shoes={SHOES} />);
     fireEvent.mouseEnter(getPoint("Scarpa Drago"));
     fireEvent.pointerLeave(getPoint("Scarpa Drago"));
+    finishHideDelay();
+    expect(screen.queryByRole("tooltip", { hidden: true })).not.toBeInTheDocument();
+  });
+
+  it("stays shown while the pointer moves from the point onto the tooltip", () => {
+    render(<QuadrantChart shoes={SHOES} />);
+    fireEvent.mouseEnter(getPoint("Scarpa Drago"));
+    fireEvent.mouseLeave(getPoint("Scarpa Drago"));
+    fireEvent.mouseEnter(getTooltip());
+    finishHideDelay();
+    expect(getTooltip()).toHaveTextContent("Scarpa Drago (unisex)");
+  });
+
+  it("hides once the pointer leaves the tooltip", () => {
+    render(<QuadrantChart shoes={SHOES} />);
+    fireEvent.mouseEnter(getPoint("Scarpa Drago"));
+    fireEvent.mouseLeave(getPoint("Scarpa Drago"));
+    fireEvent.mouseEnter(getTooltip());
+    fireEvent.mouseLeave(getTooltip());
+    finishHideDelay();
+    expect(screen.queryByRole("tooltip", { hidden: true })).not.toBeInTheDocument();
+  });
+
+  it("hides on Escape while the pointer is over the tooltip", () => {
+    render(<QuadrantChart shoes={SHOES} />);
+    fireEvent.mouseEnter(getPoint("Scarpa Drago"));
+    fireEvent.mouseLeave(getPoint("Scarpa Drago"));
+    fireEvent.mouseEnter(getTooltip());
+    fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("tooltip", { hidden: true })).not.toBeInTheDocument();
   });
 
