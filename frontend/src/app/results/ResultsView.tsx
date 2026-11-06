@@ -88,7 +88,7 @@ export function ResultsView() {
   const hasNoSurvey = token === "" && state.status === "loading";
 
   return (
-    <div className="mt-8 flex flex-col gap-8">
+    <div className="mt-4 flex flex-col gap-8">
       {/* Mounted throughout so assistive tech keeps observing the live region. */}
       <p ref={statusRef} tabIndex={-1} role="status" className="text-muted">
         {token !== null && !hasNoSurvey && state.status === "loading" && "Loading your results…"}

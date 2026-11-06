@@ -1,6 +1,6 @@
 export const VIEW_SIZE = 480;
 // Room outside the plot frame for the axis end labels.
-export const PLOT_PADDING = 72;
+export const PLOT_PADDING = 84;
 
 const PLOT_SIZE = VIEW_SIZE - 2 * PLOT_PADDING;
 

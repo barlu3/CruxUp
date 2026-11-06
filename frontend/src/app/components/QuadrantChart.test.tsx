@@ -66,6 +66,47 @@ describe("QuadrantChart marks", () => {
     expect(screen.queryByText("Solution")).not.toBeInTheDocument();
   });
 
+  it("shows a visible text label for a highlighted non-anchor", () => {
+    render(<QuadrantChart shoes={SHOES} highlightIds={["solution"]} />);
+    expect(screen.getByText("Solution")).toBeInTheDocument();
+  });
+
+  it("shows a visible text label with the version for a highlighted spec-derived point", () => {
+    render(<QuadrantChart shoes={SHOES} highlightIds={["katana"]} />);
+    expect(screen.getByText("Katana Lace")).toBeInTheDocument();
+  });
+
+  it("shows no text label for a dimmed non-anchor", () => {
+    render(<QuadrantChart shoes={SHOES} highlightIds={["drago"]} />);
+    expect(screen.queryByText("Solution")).not.toBeInTheDocument();
+  });
+
+  it("flips a highlighted label to the left when it would cross the plot edge", () => {
+    render(<QuadrantChart shoes={SHOES} highlightIds={["solution"]} />);
+    expect(screen.getByText("Solution")).toHaveAttribute("text-anchor", "end");
+  });
+
+  it("keeps a highlighted label on the right when it fits inside the plot", () => {
+    render(<QuadrantChart shoes={SHOES} highlightIds={["katana"]} />);
+    expect(screen.getByText("Katana Lace")).toHaveAttribute("text-anchor", "start");
+  });
+
+  it("separates the bottom axis labels from the corner labels by at least 30 viewBox units", () => {
+    render(<QuadrantChart shoes={SHOES} />);
+    const cornerSecondLine = Number(screen.getAllByText("+ stiff")[0].getAttribute("y"));
+    expect(labelPosition("Comfort", "y") - cornerSecondLine).toBeGreaterThanOrEqual(30);
+  });
+
+  it("keeps the axis labels inside the viewBox vertically", () => {
+    render(<QuadrantChart shoes={SHOES} />);
+    expect(labelPosition("Comfort", "y")).toBeLessThanOrEqual(VIEW_SIZE - 4);
+  });
+
+  it("caps the chart width so text renders near body-small size on wide screens", () => {
+    const { container } = render(<QuadrantChart shoes={SHOES} />);
+    expect(container.querySelector("figure")).toHaveClass("max-w-sm");
+  });
+
   it("draws a spec-derived point hollow", () => {
     render(<QuadrantChart shoes={SHOES} />);
     expect(getPoint("La Sportiva Katana Lace")).toHaveClass("fill-background");
@@ -134,9 +175,9 @@ describe("QuadrantChart marks", () => {
     expect(labelPosition("Q1 · Performance", "y")).toBeGreaterThan(VIEW_SIZE - PLOT_PADDING);
   });
 
-  it("marks anchors as section 3 reference shoes in the accessible name", () => {
+  it("marks anchors as reference shoes in the accessible name", () => {
     render(<QuadrantChart shoes={SHOES} />);
-    expect(getPoint("Scarpa Drago")).toHaveAccessibleName(/Section 3 reference shoe\./);
+    expect(getPoint("Scarpa Drago")).toHaveAccessibleName(/Reference shoe\./);
   });
 });
 
@@ -151,9 +192,9 @@ describe("QuadrantChart legend", () => {
     expect(within(screen.getByRole("list", { name: "Legend" })).queryByText("Corpus-derived")).not.toBeInTheDocument();
   });
 
-  it("lists the section 3 reference shoe entry when an anchor is present", () => {
+  it("lists the reference shoe entry when an anchor is present", () => {
     render(<QuadrantChart shoes={SHOES} />);
-    expect(within(screen.getByRole("list", { name: "Legend" })).getByText("Section 3 reference shoe")).toBeInTheDocument();
+    expect(within(screen.getByRole("list", { name: "Legend" })).getByText("Reference shoe")).toBeInTheDocument();
   });
 });
 
@@ -370,10 +411,10 @@ describe("QuadrantChart tooltip", () => {
     expect(getTooltip()).toHaveTextContent("Hand-placed");
   });
 
-  it("says Section 3 reference shoe for an anchor", () => {
+  it("says Reference shoe for an anchor", () => {
     render(<QuadrantChart shoes={SHOES} />);
     fireEvent.mouseEnter(getPoint("Scarpa Drago"));
-    expect(getTooltip()).toHaveTextContent("Section 3 reference shoe.");
+    expect(getTooltip()).toHaveTextContent("Reference shoe.");
   });
 
   it("is hidden from assistive technology", () => {

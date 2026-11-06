@@ -22,7 +22,7 @@ const PROVENANCE_LABEL: Record<PriorSource, string> = {
   spec: "Spec-derived",
   corpus: "Corpus-derived",
 };
-const ANCHOR_LABEL = "Section 3 reference shoe";
+const ANCHOR_LABEL = "Reference shoe";
 const MARK_RADIUS = 5;
 const ANCHOR_RADIUS = 7;
 // Transparent target so a point is easy to hit without enlarging the mark. The svg is fluid, so
@@ -40,7 +40,11 @@ const TOP_ROW_LINE_2 = PLOT_PADDING - 10;
 const TOP_ROW_LINE_1 = TOP_ROW_LINE_2 - LINE_HEIGHT;
 const TOP_ROW_SOFT = TOP_ROW_LINE_1 - LINE_HEIGHT;
 const BOTTOM_ROW_LINE_1 = PLOT_END + 20;
-const AXIS_ROW = BOTTOM_ROW_LINE_1 + 2 * LINE_HEIGHT + 2;
+// Pinned near the viewBox bottom so a full row of clear space separates it from the corner labels above.
+const AXIS_ROW = VIEW_SIZE - 8;
+// Rough advance of an 18-unit sans glyph, used to flip a label before it crosses the plot edge.
+const LABEL_CHAR_WIDTH = 10;
+const LABEL_GAP = 6;
 
 export function QuadrantChart({ shoes, target, highlightIds }: QuadrantChartProps) {
   const baseId = useId();
@@ -107,7 +111,7 @@ export function QuadrantChart({ shoes, target, highlightIds }: QuadrantChartProp
   }
 
   return (
-    <figure className="mx-auto flex w-full max-w-xl flex-col gap-3">
+    <figure className="mx-auto flex w-full max-w-sm flex-col gap-3">
       <div ref={wrapperRef} className="relative">
         <svg
           viewBox={`0 0 ${VIEW_SIZE} ${VIEW_SIZE}`}
@@ -118,7 +122,7 @@ export function QuadrantChart({ shoes, target, highlightIds }: QuadrantChartProp
         >
           <title id={titleId}>Shoe quadrant chart: comfort to performance, stiff to soft</title>
           <Frame />
-          {/* WHY text-lg: 12 CSS px at the 328px phone content width needs 12 * 480 / 328 = ~18 viewBox units. */}
+          {/* WHY text-lg with max-w-sm: 18 units render at 12.4px on a 328px phone and cap at 14.4px on the 384px figure. */}
           <g className="fill-muted text-lg" aria-hidden="true">
             <text x={CENTER} y={TOP_ROW_SOFT} textAnchor="middle">Soft</text>
             {/* Outside the frame so no dot or anchor label can sit on a quadrant label. Two lines each: one line is too wide for both corner labels at this size. */}
@@ -136,7 +140,9 @@ export function QuadrantChart({ shoes, target, highlightIds }: QuadrantChartProp
             const state = toState(shoe);
             const isFocused = focusedId === shoe.id;
             const radius = shoe.is_anchor ? ANCHOR_RADIUS : MARK_RADIUS;
-            const isLabelLeft = shoe.x > 0.6;
+            const labelName = toShortName(shoe);
+            const isLabeled = shoe.is_anchor || state === "highlighted";
+            const isLabelLeft = cx + radius + LABEL_GAP + labelName.length * LABEL_CHAR_WIDTH > PLOT_END;
             return (
               <g
                 key={shoe.id}
@@ -169,16 +175,16 @@ export function QuadrantChart({ shoes, target, highlightIds }: QuadrantChartProp
                   <circle cx={cx} cy={cy} r={FOCUS_RING_RADIUS} strokeWidth={2} className="fill-none stroke-focus-ring" />
                 )}
                 <Mark shoe={shoe} state={state} cx={cx} cy={cy} r={radius} />
-                {shoe.is_anchor && (
+                {isLabeled && (
                   <text
-                    x={isLabelLeft ? cx - radius - 6 : cx + radius + 6}
+                    x={isLabelLeft ? cx - radius - LABEL_GAP : cx + radius + LABEL_GAP}
                     y={cy}
                     textAnchor={isLabelLeft ? "end" : "start"}
                     dominantBaseline="middle"
                     strokeWidth={4}
                     className="fill-foreground stroke-background text-lg [paint-order:stroke]"
                   >
-                    {toShortName(shoe)}
+                    {labelName}
                   </text>
                 )}
               </g>

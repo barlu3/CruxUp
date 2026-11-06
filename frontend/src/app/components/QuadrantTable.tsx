@@ -28,7 +28,7 @@ export function QuadrantTable({ shoes }: { shoes: QuadrantShoe[] }) {
           <th scope="col" className={CELL_CLASS}>Comfort–performance</th>
           <th scope="col" className={CELL_CLASS}>Stiff–soft</th>
           <th scope="col" className={CELL_CLASS}>Placement</th>
-          <th scope="col" className={CELL_CLASS}>Section 3 reference</th>
+          <th scope="col" className={CELL_CLASS}>Reference shoe</th>
         </tr>
       </thead>
       {QUADRANTS.map((quadrant) => {
