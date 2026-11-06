@@ -4,6 +4,8 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 
 import { PLOT_PADDING, VIEW_SIZE, toChartPoint } from "../lib/quadrant-scale";
+import { formatAxisValue } from "../lib/format-axis-value";
+import { QUADRANT_LABEL } from "../lib/quadrant-labels";
 import { toShoeLabel } from "../lib/shoe-label";
 import type { PriorSource, QuadrantShoe } from "../lib/types";
 
@@ -115,10 +117,10 @@ export function QuadrantChart({ shoes, target, highlightIds }: QuadrantChartProp
             <text x={CENTER} y={PLOT_PADDING - 32} textAnchor="middle">Soft</text>
             <text x={CENTER} y={PLOT_END + 36} textAnchor="middle">Stiff</text>
             {/* Outside the frame so no dot or anchor label can sit on a quadrant label. */}
-            <text x={PLOT_END} y={PLOT_END + 16} textAnchor="end">Q1 · Performance + stiff</text>
-            <text x={PLOT_PADDING} y={PLOT_END + 16} textAnchor="start">Q2 · Comfort + stiff</text>
-            <text x={PLOT_PADDING} y={PLOT_PADDING - 12} textAnchor="start">Q3 · Comfort + soft</text>
-            <text x={PLOT_END} y={PLOT_PADDING - 12} textAnchor="end">Q4 · Performance + soft</text>
+            <text x={PLOT_END} y={PLOT_END + 16} textAnchor="end">{QUADRANT_LABEL.Q1}</text>
+            <text x={PLOT_PADDING} y={PLOT_END + 16} textAnchor="start">{QUADRANT_LABEL.Q2}</text>
+            <text x={PLOT_PADDING} y={PLOT_PADDING - 12} textAnchor="start">{QUADRANT_LABEL.Q3}</text>
+            <text x={PLOT_END} y={PLOT_PADDING - 12} textAnchor="end">{QUADRANT_LABEL.Q4}</text>
           </g>
           {ordered.map((shoe, index) => {
             const { cx, cy } = toChartPoint(shoe.x, shoe.y);
@@ -321,8 +323,8 @@ function toPointName(shoe: QuadrantShoe, isHighlighted: boolean): string {
 // Shared by the accessible name and the tooltip so both say the same thing.
 function toDetailSentences(shoe: QuadrantShoe, isHighlighted: boolean): string[] {
   return [
-    `Comfort–performance ${toValueText(shoe.x)}, ${toSide(shoe.x, "comfort", "performance")}.`,
-    `Stiff–soft ${toValueText(shoe.y)}, ${toSide(shoe.y, "stiff", "soft")}.`,
+    `Comfort–performance ${formatAxisValue(shoe.x)}, ${toSide(shoe.x, "comfort", "performance")}.`,
+    `Stiff–soft ${formatAxisValue(shoe.y)}, ${toSide(shoe.y, "stiff", "soft")}.`,
     `${PROVENANCE_LABEL[shoe.prior_source]}.`,
     ...(shoe.is_anchor ? [`${ANCHOR_LABEL}.`] : []),
     ...(isHighlighted ? ["Highlighted."] : []),
@@ -332,11 +334,6 @@ function toDetailSentences(shoe: QuadrantShoe, isHighlighted: boolean): string[]
 function toSide(value: number, negative: string, positive: string): string {
   if (Math.abs(value) < NEUTRAL_THRESHOLD) return "neutral";
   return `leaning ${value < 0 ? negative : positive}`;
-}
-
-function toValueText(value: number): string {
-  const magnitude = Math.abs(value).toFixed(2);
-  return value < 0 && magnitude !== "0.00" ? `\u2212${magnitude}` : magnitude;
 }
 
 function toShortName(shoe: QuadrantShoe): string {
