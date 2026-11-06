@@ -1,13 +1,18 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { GET as getQuadrant } from "./quadrant/route";
 import { GET as getShoes } from "./shoes/route";
 import { POST as postSurvey } from "./survey/route";
-import { MAX_SURVEY_BODY_BYTES } from "./_lib/backend";
+import { MAX_SURVEY_BODY_BYTES, callBackend } from "./_lib/backend";
+import * as quadrantModule from "./quadrant/route";
 import * as shoesModule from "./shoes/route";
 import * as surveyModule from "./survey/route";
 
 const fetchMock = vi.fn();
+const SHOES_UNAVAILABLE = "The catalogue service is unavailable. Please try again later.";
+const SURVEY_UNAVAILABLE = "The survey service is unavailable. Please try again later.";
+const QUADRANT_UNAVAILABLE = "The quadrant service is unavailable. Please try again later.";
 
 const upstream = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -46,13 +51,25 @@ describe("route surface", () => {
   it("does not use the removed segment-config dynamic export", () => {
     expect(shoesModule).not.toHaveProperty("dynamic");
     expect(surveyModule).not.toHaveProperty("dynamic");
+    expect(quadrantModule).not.toHaveProperty("dynamic");
   });
 
-  it("exports exactly GET on /api/shoes and POST on /api/survey", () => {
+  it("exports exactly GET on /api/shoes and /api/quadrant and POST on /api/survey", () => {
     const methods = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$/;
     expect(Object.keys(shoesModule).filter((k) => methods.test(k))).toEqual(["GET"]);
+    expect(Object.keys(quadrantModule).filter((k) => methods.test(k))).toEqual(["GET"]);
     expect(Object.keys(surveyModule).filter((k) => methods.test(k))).toEqual(["POST"]);
   });
+});
+
+describe("callBackend allow-list", () => {
+  it.each(["/docs", "/openapi.json", "/recommend", "/shoes/", "/survey?x=1", "//evil.test/shoes"])(
+    "refuses %s without contacting upstream",
+    (path) => {
+      expect(() => callBackend(path, { method: "GET" })).toThrow("not allow-listed");
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("GET /api/shoes", () => {
@@ -77,16 +94,25 @@ describe("GET /api/shoes", () => {
     expect(String(fetchMock.mock.calls[1][0])).toBe("http://other.test/shoes");
   });
 
+  it("passes status 200 and body through", async () => {
+    fetchMock.mockResolvedValue(upstream(200, [{ id: "1" }]));
+    const res = await getShoes();
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(await res.json()).toEqual([{ id: "1" }]);
+  });
+
   it.each([
-    [200, [{ id: "1" }]],
     [503, { detail: "database unavailable" }],
     [500, { detail: "could not complete the request" }],
-  ])("passes status %i and body through", async (status, body) => {
+    [404, { detail: "Not Found" }],
+    [201, []],
+  ])("masks upstream status %i as a 502 with the fixed envelope", async (status, body) => {
     fetchMock.mockResolvedValue(upstream(status, body));
     const res = await getShoes();
-    expect(res.status).toBe(status);
+    expect(res.status).toBe(502);
     expect(res.headers.get("content-type")).toContain("application/json");
-    expect(await res.json()).toEqual(body);
+    expect(await res.json()).toEqual({ errors: [SHOES_UNAVAILABLE] });
   });
 
   it("refuses redirects and turns the resulting throw into the 502 envelope", async () => {
@@ -100,7 +126,7 @@ describe("GET /api/shoes", () => {
     fetchMock.mockRejectedValue(new TypeError("fetch failed"));
     const res = await getShoes();
     expect(res.status).toBe(502);
-    expect(await res.json()).toEqual({ detail: "catalogue service unavailable" });
+    expect(await res.json()).toEqual({ errors: [SHOES_UNAVAILABLE] });
   });
 });
 
@@ -139,15 +165,26 @@ describe("POST /api/survey", () => {
   });
 
   it.each([
+    [201, { survey_token: "abc" }],
     [422, { errors: ["bad <b>x</b>"] }],
-    [503, { detail: "database unavailable" }],
-    [500, { detail: "could not complete the request" }],
   ])("passes status %i and body through", async (status, body) => {
     fetchMock.mockResolvedValue(upstream(status, body));
     const res = await postSurvey(post("{}"));
     expect(res.status).toBe(status);
     expect(res.headers.get("content-type")).toContain("application/json");
     expect(await res.json()).toEqual(body);
+  });
+
+  it.each([
+    [503, { detail: "database unavailable" }],
+    [500, { detail: "Traceback (most recent call last): secret" }],
+    [400, { detail: "bad request" }],
+    [200, { survey_token: "abc" }],
+  ])("masks upstream status %i as a 502 with the fixed envelope", async (status, body) => {
+    fetchMock.mockResolvedValue(upstream(status, body));
+    const res = await postSurvey(post("{}"));
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ errors: [SURVEY_UNAVAILABLE] });
   });
 
   it("accepts a body of exactly the cap", async () => {
@@ -253,8 +290,45 @@ describe("POST /api/survey", () => {
     fetchMock.mockRejectedValue(new DOMException("timed out", "TimeoutError"));
     const res = await postSurvey(post("{}"));
     expect(res.status).toBe(502);
-    expect(await res.json()).toEqual({
-      errors: ["The survey service is unavailable. Please try again later."],
-    });
+    expect(await res.json()).toEqual({ errors: [SURVEY_UNAVAILABLE] });
+  });
+});
+
+describe("GET /api/quadrant", () => {
+  it("calls the backend's /quadrant with GET and only the accept header", async () => {
+    fetchMock.mockResolvedValue(upstream(200, []));
+    await getQuadrant();
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("http://127.0.0.1:8000/quadrant");
+    expect(init.method).toBe("GET");
+    expect(init.cache).toBe("no-store");
+    expect(init.redirect).toBe("error");
+    expect(init.headers).toEqual({ accept: "application/json" });
+  });
+
+  it("passes status 200 and the list through unchanged", async () => {
+    const body = [{ id: "1", x: 0.5, y: -0.5 }];
+    fetchMock.mockResolvedValue(upstream(200, body));
+    const res = await getQuadrant();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(body);
+  });
+
+  it.each([
+    [500, { detail: "could not complete the request" }],
+    [503, { detail: "database unavailable" }],
+    [404, { detail: "Not Found" }],
+  ])("masks upstream status %i as a 502 with the fixed envelope", async (status, body) => {
+    fetchMock.mockResolvedValue(upstream(status, body));
+    const res = await getQuadrant();
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ errors: [QUADRANT_UNAVAILABLE] });
+  });
+
+  it("answers 502 when the upstream fetch throws", async () => {
+    fetchMock.mockRejectedValue(new DOMException("timed out", "TimeoutError"));
+    const res = await getQuadrant();
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ errors: [QUADRANT_UNAVAILABLE] });
   });
 });

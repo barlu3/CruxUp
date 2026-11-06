@@ -1,17 +1,32 @@
-// Server-only helpers shared by the two route handlers. The FastAPI base URL
+// Server-only helpers shared by the route handlers. The FastAPI base URL
 // comes from CRUXUP_API_URL, read per request (never NEXT_PUBLIC_).
 
 export const MAX_SURVEY_BODY_BYTES = 65_536;
 const DEFAULT_API_URL = "http://127.0.0.1:8000";
 const UPSTREAM_TIMEOUT_MS = 10_000;
+// The only backend paths the app may reach; /docs, /openapi.json and anything
+// added to FastAPI later stay unreachable from the internet.
+const ALLOWED_PATHS: readonly string[] = ["/survey", "/shoes", "/quadrant"];
 
 export function backendUrl(path: string): string {
   const base = (process.env.CRUXUP_API_URL || DEFAULT_API_URL).replace(/\/+$/, "");
   return `${base}${path}`;
 }
 
-/** Relay the upstream status and JSON body verbatim. */
-export async function relay(upstream: Response): Promise<Response> {
+/**
+ * Relay the upstream status and JSON body verbatim when the status is one the
+ * route expects. Any other status (5xx, an unexpected 4xx) becomes a 502 with
+ * the route's fixed message, so backend error text never reaches the browser.
+ */
+export async function relay(
+  upstream: Response,
+  expected: readonly number[],
+  unavailable: string,
+): Promise<Response> {
+  if (!expected.includes(upstream.status)) {
+    await upstream.body?.cancel();
+    return Response.json({ errors: [unavailable] }, { status: 502 });
+  }
   const text = await upstream.text();
   return new Response(text, {
     status: upstream.status,
@@ -19,11 +34,12 @@ export async function relay(upstream: Response): Promise<Response> {
   });
 }
 
-/** A fresh upstream request: fixed headers only, never the caller's. */
+/** A fresh upstream request to an allow-listed path: fixed headers only, never the caller's. */
 export function callBackend(
   path: string,
   init: { method: "GET" } | { method: "POST"; body: Uint8Array<ArrayBuffer> },
 ): Promise<Response> {
+  if (!ALLOWED_PATHS.includes(path)) throw new Error(`backend path not allow-listed: ${path}`);
   const headers: Record<string, string> = { accept: "application/json" };
   if (init.method === "POST") headers["content-type"] = "application/json";
   return fetch(backendUrl(path), {

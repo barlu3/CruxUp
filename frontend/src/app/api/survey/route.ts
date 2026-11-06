@@ -6,6 +6,8 @@ import {
   relay,
 } from "../_lib/backend";
 
+const UNAVAILABLE = "The survey service is unavailable. Please try again later.";
+
 // No parsing or validation here: the FastAPI layer owns every rule.
 export async function POST(request: Request): Promise<Response> {
   if (!isJsonContentType(request.headers.get("content-type"))) {
@@ -22,11 +24,8 @@ export async function POST(request: Request): Promise<Response> {
         { status: 413 },
       );
     }
-    return await relay(await callBackend("/survey", { method: "POST", body }));
+    return await relay(await callBackend("/survey", { method: "POST", body }), [201, 422], UNAVAILABLE);
   } catch {
-    return Response.json(
-      { errors: ["The survey service is unavailable. Please try again later."] },
-      { status: 502 },
-    );
+    return Response.json({ errors: [UNAVAILABLE] }, { status: 502 });
   }
 }
