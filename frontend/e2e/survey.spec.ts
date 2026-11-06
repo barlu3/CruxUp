@@ -17,10 +17,10 @@ test("submitting with a picked good-fit shoe lands on results", async ({ page })
   await expect(page).toHaveURL(/\/results$/);
 });
 
-test("results confirm the survey was saved after submitting", async ({ page }) => {
+test("results list the ranked shoes after submitting", async ({ page }) => {
   await pickGoodFitShoe(page);
   await page.getByRole("button", { name: "Find my shoes" }).click();
-  await expect(page.getByText(/Survey saved/)).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "Ranked shoes" })).toBeVisible();
 });
 
 test("survey token is not exposed in the URL after submit", async ({ page }) => {
