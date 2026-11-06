@@ -3,12 +3,14 @@
 CruxUp is a climbing shoe recommender: a Python backend (FastAPI, Postgres) and
 a Next.js frontend. The plan of record is [`timeline.md`](timeline.md).
 
-Current state: **W6-2 complete.** The schema, catalogue, prior model, corpus
-collector and survey capture exist. The API serves `POST /survey`, `GET /shoes`
-and `GET /quadrant` (§7). The questionnaire at `/survey` saves through Next.js
-route handlers to the API (§8). The quadrant page at `/quadrant` shows every
-placed shoe as a chart and a table (§8). `/results` is still a placeholder
-(W6-3), and there is no scorer yet.
+Current state: **W7-2 complete.** The schema, catalogue, prior model, corpus
+collector and survey capture exist. The API serves `POST /survey`, `GET /shoes`,
+`GET /quadrant` and `POST /recommend` (§7). `POST /recommend` ranks the catalogue
+for one survey with the minimal v0-slice scorer. The questionnaire at `/survey`
+saves through Next.js route handlers to the API (§8). The quadrant page at
+`/quadrant` shows every placed shoe as a chart and a table (§8). `/results` is
+still a placeholder (W6-3). The Next.js proxy does not forward `/recommend` yet,
+so the browser cannot show ranked results.
 
 ---
 
@@ -153,7 +155,7 @@ prints what is wrong and touches nothing.
 ## 6. Verify
 
 ```bash
-python3 -m pytest backend/tests/ -q        # 1711 passed, 18 skipped without a database; the 18 DB-backed tests run when Postgres is reachable
+python3 -m pytest backend/tests/ -q        # 1976 passed, 25 skipped without a database; 2001 passed with one (below)
 python3 backend/app/catalog/validate.py    # catalogue invariants
 python3 backend/app/catalog/priors.py      # spec model vs hand placements
 ```
@@ -167,6 +169,25 @@ for f in ['backend/app/db/migrations/0001_init.sql',
           'backend/app/db/migrations/0001_init_down.sql']:
     print(f, len(parse_sql(open(f).read())), 'statements OK')"
 ```
+
+### DB-backed tests
+
+25 tests need PostgreSQL. Without a reachable database they skip, and the run
+reports `1976 passed, 25 skipped`. To run them, point `DATABASE_URL` at a
+database that has been migrated (§3) and seeded (§5):
+
+```bash
+DATABASE_URL=postgresql://localhost/cruxup_test python3 -m pytest backend/tests/ -q
+# 2001 passed, none skipped (verified 2026-11-06 against PostgreSQL 16.15)
+```
+
+- The tests read `DATABASE_URL` from the environment or `.env`, as the API does.
+  If neither sets it, they fall back to `postgresql://localhost/cruxup`.
+- The tests write. The survey-persistence and `/recommend` tests commit rows and
+  then delete them, so use a scratch database, not the one the API uses.
+- A reachable database that is not seeded makes the catalogue-dependent tests
+  skip, so the run will not reach 2001 passed. CI's integration job fails on any
+  skip for this reason.
 
 ---
 
@@ -187,9 +208,13 @@ curl -s localhost:8000/quadrant | head -c 300                # every placed shoe
 curl -s -H 'content-type: application/json' \
   -d '{"known_good_shoes": [{"brand": "Scarpa", "model": "Instinct"}]}' \
   localhost:8000/survey                                      # 422: ambiguous -- lists VS and VSR
+curl -s -H 'content-type: application/json' \
+  -d '{"survey_token": "YOUR_SURVEY_TOKEN"}' \
+  localhost:8000/recommend                                   # ranked shoes for one survey; 404 if the token is unknown
 ```
 
 - A valid `POST /survey` **commits a row** and returns only `{"survey_token": ...}`. Use `store.py --dry-run` to try a submission without writing.
+- `POST /recommend` takes the token that `POST /survey` returned, in the form `{"survey_token": "<token>"}`. It **writes**: it commits the ranking to `recommendation` for that survey. Rows for shoes that are no longer ranked are removed, unless they carry feedback. Re-sending the same request is safe. A token of any other shape gets a 422, and a valid but unknown token gets a 404. It is not proxied to the browser until W6-3.
 - Interactive docs are at `/docs`. Only the Next.js route handlers should call this service; do not expose it publicly.
 
 ### Running the frontend against it
