@@ -1,4 +1,5 @@
-"""[W7-1] FastAPI entrypoint. Mounts api/routes: POST /survey, GET /shoes.
+"""[W7-1] FastAPI entrypoint. Mounts api/routes: POST /survey, GET /shoes,
+GET /quadrant.
 
 Run as `cd backend && uvicorn app.main:app`, or `uvicorn --app-dir backend
 app.main:app` from the repo root -- either way, `app` is a package rooted at
@@ -45,7 +46,7 @@ failure from the logs.
 Not handled here, deliberately: a request-body size cap and hiding
 /docs + /openapi.json. The backend is reachable only through the Next.js
 route handler (see above), which is the internet-facing choke point, so both
-belong there (W6-1): it must allow-list exactly /survey and /shoes.
+belong there (W6-1): it must allow-list exactly /survey, /shoes and /quadrant.
 """
 
 from __future__ import annotations
@@ -57,6 +58,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.api.deps import DatabaseNotConfigured, MalformedJSONBody
+from app.api.routes.quadrant import router as quadrant_router
 from app.api.routes.shoes import router as shoes_router
 from app.api.routes.survey import router as survey_router
 
@@ -82,6 +84,7 @@ def create_app() -> FastAPI:
 
     app.include_router(survey_router)
     app.include_router(shoes_router)
+    app.include_router(quadrant_router)
 
     @app.exception_handler(MalformedJSONBody)
     async def _malformed_json_handler(request: Request, exc: MalformedJSONBody):
