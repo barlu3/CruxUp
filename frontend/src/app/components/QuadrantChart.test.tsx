@@ -102,9 +102,22 @@ describe("QuadrantChart marks", () => {
     expect(labelPosition("Comfort", "y")).toBeLessThanOrEqual(VIEW_SIZE - 4);
   });
 
-  it("caps the chart width so text renders near body-small size on wide screens", () => {
-    const { container } = render(<QuadrantChart shoes={SHOES} />);
-    expect(container.querySelector("figure")).toHaveClass("max-w-sm");
+  it("keeps the label on the right for a point on the left plot edge", () => {
+    const edge: QuadrantShoe = { ...SOLUTION, id: "edge", model: "Edge", x: -1 };
+    render(<QuadrantChart shoes={[edge]} highlightIds={["edge"]} />);
+    expect(screen.getByText("Edge")).toHaveAttribute("text-anchor", "start");
+  });
+
+  it("puts a label that fits neither side on the side with more room, left of a centre-right point", () => {
+    const wide: QuadrantShoe = { ...SOLUTION, id: "wide", model: "Extraordinarily Long Model Name", x: 0.3 };
+    render(<QuadrantChart shoes={[wide]} highlightIds={["wide"]} />);
+    expect(screen.getByText(/Extraordinarily Long Model Name/)).toHaveAttribute("text-anchor", "end");
+  });
+
+  it("puts a label that fits neither side on the side with more room, right of a centre-left point", () => {
+    const wide: QuadrantShoe = { ...SOLUTION, id: "wide", model: "Extraordinarily Long Model Name", x: -0.3 };
+    render(<QuadrantChart shoes={[wide]} highlightIds={["wide"]} />);
+    expect(screen.getByText(/Extraordinarily Long Model Name/)).toHaveAttribute("text-anchor", "start");
   });
 
   it("draws a spec-derived point hollow", () => {

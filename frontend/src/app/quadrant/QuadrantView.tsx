@@ -64,7 +64,10 @@ export function QuadrantView() {
         <>
           <section aria-labelledby={chartHeadingId} className="flex flex-col gap-3">
             <h2 id={chartHeadingId} className="text-xl font-semibold">Quadrant chart</h2>
-            <QuadrantChart shoes={state.shoes} />
+            {/* Wider than /results: ~30 shoes need the room to keep clusters apart. */}
+            <div className="mx-auto w-full max-w-xl">
+              <QuadrantChart shoes={state.shoes} />
+            </div>
           </section>
           <section aria-labelledby={tableHeadingId} className="flex flex-col gap-3">
             <h2 id={tableHeadingId} className="text-xl font-semibold">All shoes by quadrant</h2>

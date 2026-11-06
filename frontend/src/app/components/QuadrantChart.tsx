@@ -42,7 +42,7 @@ const TOP_ROW_SOFT = TOP_ROW_LINE_1 - LINE_HEIGHT;
 const BOTTOM_ROW_LINE_1 = PLOT_END + 20;
 // Pinned near the viewBox bottom so a full row of clear space separates it from the corner labels above.
 const AXIS_ROW = VIEW_SIZE - 8;
-// Rough advance of an 18-unit sans glyph, used to flip a label before it crosses the plot edge.
+// Rough advance of an 18-unit sans glyph, used to put a label on the side of its point where it fits inside the plot.
 const LABEL_CHAR_WIDTH = 10;
 const LABEL_GAP = 6;
 
@@ -111,7 +111,7 @@ export function QuadrantChart({ shoes, target, highlightIds }: QuadrantChartProp
   }
 
   return (
-    <figure className="mx-auto flex w-full max-w-sm flex-col gap-3">
+    <figure className="mx-auto flex w-full flex-col gap-3">
       <div ref={wrapperRef} className="relative">
         <svg
           viewBox={`0 0 ${VIEW_SIZE} ${VIEW_SIZE}`}
@@ -122,7 +122,7 @@ export function QuadrantChart({ shoes, target, highlightIds }: QuadrantChartProp
         >
           <title id={titleId}>Shoe quadrant chart: comfort to performance, stiff to soft</title>
           <Frame />
-          {/* WHY text-lg with max-w-sm: 18 units render at 12.4px on a 328px phone and cap at 14.4px on the 384px figure. */}
+          {/* WHY text-lg: text is in viewBox units, so its rendered size scales with the figure width. 18 of 480 units is ~12px on a phone; callers cap the width so wide screens do not blow it up. */}
           <g className="fill-muted text-lg" aria-hidden="true">
             <text x={CENTER} y={TOP_ROW_SOFT} textAnchor="middle">Soft</text>
             {/* Outside the frame so no dot or anchor label can sit on a quadrant label. Two lines each: one line is too wide for both corner labels at this size. */}
@@ -142,7 +142,9 @@ export function QuadrantChart({ shoes, target, highlightIds }: QuadrantChartProp
             const radius = shoe.is_anchor ? ANCHOR_RADIUS : MARK_RADIUS;
             const labelName = toShortName(shoe);
             const isLabeled = shoe.is_anchor || state === "highlighted";
-            const isLabelLeft = cx + radius + LABEL_GAP + labelName.length * LABEL_CHAR_WIDTH > PLOT_END;
+            const roomRight = PLOT_END - (cx + radius + LABEL_GAP);
+            const roomLeft = cx - radius - LABEL_GAP - PLOT_PADDING;
+            const isLabelLeft = labelName.length * LABEL_CHAR_WIDTH > roomRight && roomLeft > roomRight;
             return (
               <g
                 key={shoe.id}

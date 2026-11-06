@@ -181,11 +181,14 @@ function ReadyResults({ ranking }: { ranking: RecommendResponse }) {
       <section aria-labelledby={chartHeadingId} className="flex flex-col gap-3">
         <h2 id={chartHeadingId} className="text-xl font-semibold">Where they sit on the quadrant</h2>
         <p className="text-sm text-muted">Your top 3 are highlighted. Only ranked shoes appear; shoes that were left out are not shown.</p>
-        <QuadrantChart
-          shoes={results}
-          target={ranking.target ?? undefined}
-          highlightIds={results.slice(0, HIGHLIGHT_COUNT).map((result) => result.id)}
-        />
+        {/* Narrow cap: only a few labelled shoes, so the chart stays near body-small text on wide screens. */}
+        <div className="mx-auto w-full max-w-sm">
+          <QuadrantChart
+            shoes={results}
+            target={ranking.target ?? undefined}
+            highlightIds={results.slice(0, HIGHLIGHT_COUNT).map((result) => result.id)}
+          />
+        </div>
       </section>
     </>
   );
