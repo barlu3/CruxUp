@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function QuadrantPage() {
   return (
-    <main className="mx-auto max-w-4xl p-8">
+    <main className="mx-auto max-w-4xl p-4 sm:p-8">
       <h1 className="text-3xl font-bold">Shoe quadrant</h1>
       <p className="mt-4 text-muted">
         Every shoe is placed on two axes: comfort to performance, and stiff to soft. Each

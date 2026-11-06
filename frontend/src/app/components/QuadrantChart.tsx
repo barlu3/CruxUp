@@ -34,6 +34,13 @@ const FOCUS_RING_RADIUS = 11;
 const TARGET_ARM = 10;
 const PLOT_END = VIEW_SIZE - PLOT_PADDING;
 const CENTER = VIEW_SIZE / 2;
+// Text rows in the padding around the frame, sized for 18-unit text.
+const LINE_HEIGHT = 20;
+const TOP_ROW_LINE_2 = PLOT_PADDING - 10;
+const TOP_ROW_LINE_1 = TOP_ROW_LINE_2 - LINE_HEIGHT;
+const TOP_ROW_SOFT = TOP_ROW_LINE_1 - LINE_HEIGHT;
+const BOTTOM_ROW_LINE_1 = PLOT_END + 20;
+const AXIS_ROW = BOTTOM_ROW_LINE_1 + 2 * LINE_HEIGHT + 2;
 
 export function QuadrantChart({ shoes, target, highlightIds }: QuadrantChartProps) {
   const baseId = useId();
@@ -100,7 +107,7 @@ export function QuadrantChart({ shoes, target, highlightIds }: QuadrantChartProp
   }
 
   return (
-    <figure className="flex flex-col gap-3">
+    <figure className="mx-auto flex w-full max-w-xl flex-col gap-3">
       <div ref={wrapperRef} className="relative">
         <svg
           viewBox={`0 0 ${VIEW_SIZE} ${VIEW_SIZE}`}
@@ -111,17 +118,18 @@ export function QuadrantChart({ shoes, target, highlightIds }: QuadrantChartProp
         >
           <title id={titleId}>Shoe quadrant chart: comfort to performance, stiff to soft</title>
           <Frame />
-          <g className="fill-muted text-xs" aria-hidden="true">
-            <text x={CENTER} y={PLOT_PADDING - 32} textAnchor="middle">Soft</text>
-            <text x={CENTER} y={PLOT_END + 36} textAnchor="middle">Stiff</text>
-            {/* Anchored to the frame edges on their own row: beside the frame "Performance" overflows the viewBox. */}
-            <text x={PLOT_PADDING} y={PLOT_END + 56} textAnchor="start">Comfort</text>
-            <text x={PLOT_END} y={PLOT_END + 56} textAnchor="end">Performance</text>
-            {/* Outside the frame so no dot or anchor label can sit on a quadrant label. */}
-            <text x={PLOT_END} y={PLOT_END + 16} textAnchor="end">{QUADRANT_LABEL.Q1}</text>
-            <text x={PLOT_PADDING} y={PLOT_END + 16} textAnchor="start">{QUADRANT_LABEL.Q2}</text>
-            <text x={PLOT_PADDING} y={PLOT_PADDING - 12} textAnchor="start">{QUADRANT_LABEL.Q3}</text>
-            <text x={PLOT_END} y={PLOT_PADDING - 12} textAnchor="end">{QUADRANT_LABEL.Q4}</text>
+          {/* WHY text-lg: 12 CSS px at the 328px phone content width needs 12 * 480 / 328 = ~18 viewBox units. */}
+          <g className="fill-muted text-lg" aria-hidden="true">
+            <text x={CENTER} y={TOP_ROW_SOFT} textAnchor="middle">Soft</text>
+            {/* Outside the frame so no dot or anchor label can sit on a quadrant label. Two lines each: one line is too wide for both corner labels at this size. */}
+            <QuadrantCornerLabel label={QUADRANT_LABEL.Q3} x={PLOT_PADDING} y={TOP_ROW_LINE_1} anchor="start" />
+            <QuadrantCornerLabel label={QUADRANT_LABEL.Q4} x={PLOT_END} y={TOP_ROW_LINE_1} anchor="end" />
+            <QuadrantCornerLabel label={QUADRANT_LABEL.Q2} x={PLOT_PADDING} y={BOTTOM_ROW_LINE_1} anchor="start" />
+            <QuadrantCornerLabel label={QUADRANT_LABEL.Q1} x={PLOT_END} y={BOTTOM_ROW_LINE_1} anchor="end" />
+            {/* Anchored to the frame edges: beside the frame "Performance" overflows the viewBox. */}
+            <text x={PLOT_PADDING} y={AXIS_ROW} textAnchor="start">Comfort</text>
+            <text x={CENTER} y={AXIS_ROW} textAnchor="middle">Stiff</text>
+            <text x={PLOT_END} y={AXIS_ROW} textAnchor="end">Performance</text>
           </g>
           {ordered.map((shoe, index) => {
             const { cx, cy } = toChartPoint(shoe.x, shoe.y);
@@ -167,7 +175,8 @@ export function QuadrantChart({ shoes, target, highlightIds }: QuadrantChartProp
                     y={cy}
                     textAnchor={isLabelLeft ? "end" : "start"}
                     dominantBaseline="middle"
-                    className="fill-foreground text-xs"
+                    strokeWidth={4}
+                    className="fill-foreground stroke-background text-lg [paint-order:stroke]"
                   >
                     {toShortName(shoe)}
                   </text>
@@ -192,6 +201,17 @@ export function QuadrantChart({ shoes, target, highlightIds }: QuadrantChartProp
         {hasHighlighted && <LegendItem label="Highlighted" swatch={<Swatch kind="highlighted" />} />}
       </ul>
     </figure>
+  );
+}
+
+function QuadrantCornerLabel({ label, x, y, anchor }: { label: string; x: number; y: number; anchor: "start" | "end" }) {
+  // "Q4 · Performance + soft" -> ["Q4 · Performance", "+ soft"]
+  const split = label.indexOf(" + ");
+  return (
+    <text textAnchor={anchor}>
+      <tspan x={x} y={y}>{label.slice(0, split)}</tspan>
+      <tspan x={x} y={y + LINE_HEIGHT}>{label.slice(split + 1)}</tspan>
+    </text>
   );
 }
 

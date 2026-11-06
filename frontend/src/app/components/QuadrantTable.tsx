@@ -14,6 +14,12 @@ const CELL_CLASS = "border border-border px-3 py-2 text-left";
 
 export function QuadrantTable({ shoes }: { shoes: QuadrantShoe[] }) {
   return (
+    <div
+      role="region"
+      aria-label="All shoes by quadrant, scrollable"
+      tabIndex={0}
+      className="overflow-x-auto"
+    >
     <table className="w-full border-collapse text-sm text-foreground">
       <caption className="sr-only">All shoes by quadrant</caption>
       <thead>
@@ -56,5 +62,6 @@ export function QuadrantTable({ shoes }: { shoes: QuadrantShoe[] }) {
         );
       })}
     </table>
+    </div>
   );
 }

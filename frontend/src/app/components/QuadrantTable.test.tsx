@@ -20,6 +20,16 @@ describe("QuadrantTable", () => {
     expect(screen.getByRole("table", { name: "All shoes by quadrant" })).toBeInTheDocument();
   });
 
+  it("wraps the table in a focusable scroll region", () => {
+    render(<QuadrantTable shoes={SHOES} />);
+    expect(screen.getByRole("region", { name: "All shoes by quadrant, scrollable" })).toHaveAttribute("tabindex", "0");
+  });
+
+  it("lets the scroll region scroll horizontally", () => {
+    render(<QuadrantTable shoes={SHOES} />);
+    expect(screen.getByRole("region", { name: "All shoes by quadrant, scrollable" })).toHaveClass("overflow-x-auto");
+  });
+
   it("hides the caption visually because the section heading already shows it", () => {
     render(<QuadrantTable shoes={SHOES} />);
     expect(screen.getByText("All shoes by quadrant")).toHaveClass("sr-only");

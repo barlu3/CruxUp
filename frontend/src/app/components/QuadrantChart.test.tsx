@@ -38,17 +38,17 @@ describe("QuadrantChart marks", () => {
 
   it("places the Q1 label below the Q3 label", () => {
     render(<QuadrantChart shoes={SHOES} />);
-    expect(labelPosition("Q1 · Performance + stiff", "y")).toBeGreaterThan(labelPosition("Q3 · Comfort + soft", "y"));
+    expect(labelPosition("Q1 · Performance", "y")).toBeGreaterThan(labelPosition("Q3 · Comfort", "y"));
   });
 
   it("places the Q1 label right of the Q2 label", () => {
     render(<QuadrantChart shoes={SHOES} />);
-    expect(labelPosition("Q1 · Performance + stiff", "x")).toBeGreaterThan(labelPosition("Q2 · Comfort + stiff", "x"));
+    expect(labelPosition("Q1 · Performance", "x")).toBeGreaterThan(labelPosition("Q2 · Comfort", "x"));
   });
 
   it("places the Q4 label above the Q2 label", () => {
     render(<QuadrantChart shoes={SHOES} />);
-    expect(labelPosition("Q4 · Performance + soft", "y")).toBeLessThan(labelPosition("Q2 · Comfort + stiff", "y"));
+    expect(labelPosition("Q4 · Performance", "y")).toBeLessThan(labelPosition("Q2 · Comfort", "y"));
   });
 
   it.each(["Comfort", "Performance", "Soft", "Stiff"])("renders the %s axis label", (label) => {
@@ -114,14 +114,24 @@ describe("QuadrantChart marks", () => {
     expect(x >= 0 && x <= VIEW_SIZE).toBe(true);
   });
 
+  it("keeps the full quadrant wording in the label's second line", () => {
+    render(<QuadrantChart shoes={SHOES} />);
+    expect(screen.getByText("Q1 · Performance").parentElement).toHaveTextContent("Q1 · Performance+ stiff");
+  });
+
+  it.each(["Soft", "Q1 · Performance", "Drago"])("sizes the %s label at 18 viewBox units or more", (text) => {
+    render(<QuadrantChart shoes={SHOES} />);
+    expect(screen.getByText(text).closest("[class*='text-lg']")).not.toBeNull();
+  });
+
   it("places the Q3 label above the plot frame", () => {
     render(<QuadrantChart shoes={SHOES} />);
-    expect(labelPosition("Q3 · Comfort + soft", "y")).toBeLessThan(PLOT_PADDING);
+    expect(labelPosition("Q3 · Comfort", "y")).toBeLessThan(PLOT_PADDING);
   });
 
   it("places the Q1 label below the plot frame", () => {
     render(<QuadrantChart shoes={SHOES} />);
-    expect(labelPosition("Q1 · Performance + stiff", "y")).toBeGreaterThan(VIEW_SIZE - PLOT_PADDING);
+    expect(labelPosition("Q1 · Performance", "y")).toBeGreaterThan(VIEW_SIZE - PLOT_PADDING);
   });
 
   it("marks anchors as section 3 reference shoes in the accessible name", () => {
