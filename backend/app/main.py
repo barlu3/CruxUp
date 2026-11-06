@@ -1,5 +1,8 @@
 """[W7-1] FastAPI entrypoint. Mounts api/routes: POST /survey, GET /shoes,
-GET /quadrant.
+GET /quadrant, POST /recommend.
+
+/recommend is mounted here but not yet proxied by the Next.js route handler;
+W6-3 adds that, so it is not reachable from a browser until then.
 
 Run as `cd backend && uvicorn app.main:app`, or `uvicorn --app-dir backend
 app.main:app` from the repo root -- either way, `app` is a package rooted at
@@ -46,7 +49,7 @@ failure from the logs.
 Not handled here, deliberately: a request-body size cap and hiding
 /docs + /openapi.json. The backend is reachable only through the Next.js
 route handler (see above), which is the internet-facing choke point, so both
-belong there (W6-1): it must allow-list exactly /survey, /shoes and /quadrant.
+belong there (W6-1): it must allow-list exactly /survey, /shoes and /quadrant (plus /recommend once W6-3 lands).
 """
 
 from __future__ import annotations
@@ -57,8 +60,9 @@ import psycopg
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.api.deps import DatabaseNotConfigured, MalformedJSONBody
+from app.api.deps import DatabaseNotConfigured, InvalidSurveyTokenBody, MalformedJSONBody
 from app.api.routes.quadrant import router as quadrant_router
+from app.api.routes.recommend import router as recommend_router
 from app.api.routes.shoes import router as shoes_router
 from app.api.routes.survey import router as survey_router
 
@@ -85,11 +89,20 @@ def create_app() -> FastAPI:
     app.include_router(survey_router)
     app.include_router(shoes_router)
     app.include_router(quadrant_router)
+    app.include_router(recommend_router)
 
     @app.exception_handler(MalformedJSONBody)
     async def _malformed_json_handler(request: Request, exc: MalformedJSONBody):
         _log_and_mask(exc, request)
         return JSONResponse(status_code=422, content={"errors": ["request body is not valid JSON"]})
+
+    @app.exception_handler(InvalidSurveyTokenBody)
+    async def _invalid_token_body_handler(request: Request, exc: InvalidSurveyTokenBody):
+        # Fixed text, never the submitted value: it would reflect the token.
+        return JSONResponse(
+            status_code=422,
+            content={"errors": ['body must be {"survey_token": <token>}']},
+        )
 
     @app.exception_handler(DatabaseNotConfigured)
     async def _not_configured_handler(request: Request, exc: DatabaseNotConfigured):

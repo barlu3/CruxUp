@@ -3,11 +3,13 @@
 CruxUp is a climbing shoe recommender: a Python backend (FastAPI, Postgres) and
 a Next.js frontend. The plan of record is [`timeline.md`](timeline.md).
 
-Current state: **W6-2 complete.** The schema, catalogue, prior model, corpus
-collector and survey capture exist. The API serves `POST /survey`, `GET /shoes`
-and `GET /quadrant` (§7). The questionnaire at `/survey` and the quadrant at
-`/quadrant` reach the API through Next.js route handlers (§8). `/results` is
-still a placeholder (W6-3), and there is no scorer yet.
+Current state: **W7-2 complete.** The schema, catalogue, prior model, corpus
+collector and survey capture exist. The API serves `POST /survey`, `GET /shoes`,
+`GET /quadrant` and `POST /recommend` (§7); `POST /recommend` ranks the catalogue
+for one survey with the v0 scorer. The questionnaire at `/survey` and the
+quadrant at `/quadrant` reach the API through Next.js route handlers (§8).
+`/results` is still a placeholder, and the route handlers do not forward
+`/recommend` yet (both W6-3), so the browser cannot show ranked results.
 
 ---
 
@@ -152,7 +154,7 @@ prints what is wrong and touches nothing.
 ## 6. Verify
 
 ```bash
-python3 -m pytest backend/tests/ -q        # 1731 passed with a seeded database; 1713 passed, 18 skipped without one
+python3 -m pytest backend/tests/ -q        # 2009 passed with a seeded database; 1983 passed, 26 skipped without one
 python3 backend/app/catalog/validate.py    # catalogue invariants
 python3 backend/app/catalog/priors.py      # spec model vs hand placements
 ```
@@ -166,6 +168,12 @@ for f in ['backend/app/db/migrations/0001_init.sql',
           'backend/app/db/migrations/0001_init_down.sql']:
     print(f, len(parse_sql(open(f).read())), 'statements OK')"
 ```
+
+The 26 DB-backed tests skip only when `DATABASE_URL` cannot be reached. They
+assume a migrated (§3) and seeded (§5) database: against an unseeded one, the
+anchor and `/recommend` tests skip, and the `GET /shoes` tests fail. They **write**: the
+`POST /survey` and `/recommend` persistence tests commit rows and then delete
+them, so point `DATABASE_URL` at a scratch database, not the one the API uses.
 
 ---
 
@@ -186,9 +194,13 @@ curl -s localhost:8000/quadrant | head -c 300                # every placed shoe
 curl -s -H 'content-type: application/json' \
   -d '{"known_good_shoes": [{"brand": "Scarpa", "model": "Instinct"}]}' \
   localhost:8000/survey                                      # 422: ambiguous -- lists VS and VSR
+curl -s -H 'content-type: application/json' \
+  -d '{"survey_token": "YOUR_SURVEY_TOKEN"}' \
+  localhost:8000/recommend                                   # the ranking for one survey; 404 if the token is unknown
 ```
 
 - A valid `POST /survey` **commits a row** and returns only `{"survey_token": ...}`. Use `store.py --dry-run` to try a submission without writing.
+- `POST /recommend` takes that token as `{"survey_token": "<token>"}` and **writes**: it commits the ranking to `recommendation` for that survey, keeping any feedback already recorded, and removes rows for shoes no longer ranked unless they carry feedback. Re-sending the request is safe. A token of the wrong shape is a 422; an unknown one is a 404.
 - Interactive docs are at `/docs`. Only the Next.js route handler should call this service; do not expose it publicly.
 
 ---
