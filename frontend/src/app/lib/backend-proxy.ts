@@ -10,7 +10,7 @@ const SECURITY_HEADERS = {
   "cache-control": "no-store",
 } as const;
 
-type BackendPath = "/survey" | "/shoes";
+type BackendPath = "/survey" | "/shoes" | "/quadrant";
 
 export function createErrorResponse(status: number, message: string): Response {
   return Response.json({ errors: [message] }, { status, headers: SECURITY_HEADERS });
