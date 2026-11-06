@@ -181,3 +181,12 @@ def test_p4_anchor_only_without_target_ties_eight_shoes_at_full_fit(shoes):
 def test_p5_empty_survey_confidence_is_low_everywhere(shoes):
     ranking = score.recommend({}, shoes, [])
     assert {r["confidence_label"] for r in ranking.results} == {"low"}
+
+
+# --- Emitted scores stay in [0, 1] (the frontend guard rejects anything else) ---
+
+def test_every_emitted_score_and_confidence_is_within_unit_range(p1, p2, p3, p4, shoes):
+    rankings = [p1, p2, p3, p4, score.recommend({}, shoes, [])]
+    fields = ("fit_score", "style_score", "budget_score", "total_score", "confidence")
+    values = [r[f] for ranking in rankings for r in ranking.results for f in fields]
+    assert all(v is None or 0.0 <= v <= 1.0 for v in values)

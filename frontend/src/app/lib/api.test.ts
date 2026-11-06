@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, getQuadrant, getShoes, submitSurvey } from "./api";
+import { ApiError, getQuadrant, getRecommendations, getShoes, submitSurvey } from "./api";
 
 const fetchMock = vi.fn();
 
@@ -352,5 +352,196 @@ describe("getQuadrant", () => {
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
 
     await expect(getQuadrant()).rejects.toMatchObject({ code: "unavailable" });
+  });
+});
+
+describe("getRecommendations", () => {
+  const validRecommendation = {
+    id: "1",
+    brand: "La Sportiva",
+    model: "Solution",
+    version: "",
+    gender: "unisex",
+    x: 0.4,
+    y: -0.6,
+    prior_source: "corpus",
+    is_anchor: false,
+    quadrant: "Q4",
+    msrp_usd: 190,
+    price_unknown: false,
+    fit_score: 0.8,
+    style_score: 0.5,
+    budget_score: null,
+    total_score: 0.7,
+    confidence: 0.9,
+    confidence_label: "high",
+    rank: 1,
+    warnings: [],
+  };
+  const validRanking = {
+    scorer_version: "v1",
+    target: { x: 0.2, y: -0.3 },
+    terms: { fit: true, style: true, budget: false },
+    gated_out: { over_budget: 0, size_unavailable: 1, unplaced: 2 },
+    warnings: [],
+    results: [validRecommendation],
+  };
+
+  function rankingWith(result: Record<string, unknown>) {
+    return { ...validRanking, results: [{ ...validRecommendation, ...result }] };
+  }
+
+  it("sends only the survey token in the JSON body", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(validRanking, 200));
+
+    await getRecommendations("tok-1");
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ survey_token: "tok-1" });
+  });
+
+  it("posts to exactly /api/recommend with no token in the URL", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(validRanking, 200));
+
+    await getRecommendations("tok-1");
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/recommend");
+  });
+
+  it("uses the POST method", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(validRanking, 200));
+
+    await getRecommendations("tok-1");
+
+    expect(fetchMock.mock.calls[0][1].method).toBe("POST");
+  });
+
+  it("sends a JSON content-type header", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(validRanking, 200));
+
+    await getRecommendations("tok-1");
+
+    expect(fetchMock.mock.calls[0][1].headers).toEqual({ "content-type": "application/json" });
+  });
+
+  it("returns the ranking on a valid 200", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(validRanking, 200));
+
+    expect(await getRecommendations("tok-1")).toEqual({ status: "ok", ranking: validRanking });
+  });
+
+  it("returns survey_not_found on 404", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ errors: ["not found"] }, 404));
+
+    expect(await getRecommendations("tok-1")).toEqual({ status: "survey_not_found" });
+  });
+
+  it("returns survey_not_found on 422 because a malformed token can never match", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ errors: ["bad token"] }, 422));
+
+    expect(await getRecommendations("nope")).toEqual({ status: "survey_not_found" });
+  });
+
+  it("throws ApiError unavailable on 502", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ errors: ["bad gateway"] }, 502));
+
+    await expect(getRecommendations("tok-1")).rejects.toMatchObject({ code: "unavailable" });
+  });
+
+  it("throws ApiError timeout on 504", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ errors: ["slow"] }, 504));
+
+    await expect(getRecommendations("tok-1")).rejects.toMatchObject({ code: "timeout" });
+  });
+
+  it("throws ApiError bad_response on a non-JSON 200", async () => {
+    fetchMock.mockResolvedValue(new Response("<html>", { status: 200 }));
+
+    await expect(getRecommendations("tok-1")).rejects.toMatchObject({ code: "bad_response" });
+  });
+
+  it("throws bad_response on an unknown confidence_label", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(rankingWith({ confidence_label: "certain" }), 200));
+
+    await expect(getRecommendations("tok-1")).rejects.toMatchObject({ code: "bad_response" });
+  });
+
+  it("throws bad_response when price_unknown is true but msrp_usd is a number", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(rankingWith({ price_unknown: true }), 200));
+
+    await expect(getRecommendations("tok-1")).rejects.toMatchObject({ code: "bad_response" });
+  });
+
+  it("throws bad_response on a negative msrp_usd", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(rankingWith({ msrp_usd: -1 }), 200));
+
+    await expect(getRecommendations("tok-1")).rejects.toMatchObject({ code: "bad_response" });
+  });
+
+  it("throws bad_response when fit_score is above 1", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(rankingWith({ fit_score: 1.2 }), 200));
+
+    await expect(getRecommendations("tok-1")).rejects.toMatchObject({ code: "bad_response" });
+  });
+
+  it("throws bad_response on a non-integer rank", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(rankingWith({ rank: 1.5 }), 200));
+
+    await expect(getRecommendations("tok-1")).rejects.toMatchObject({ code: "bad_response" });
+  });
+
+  it("throws bad_response when ranks are out of order", async () => {
+    const second = { ...validRecommendation, id: "2", rank: 1 };
+    const body = { ...validRanking, results: [validRecommendation, second] };
+    fetchMock.mockResolvedValue(jsonResponse(body, 200));
+
+    await expect(getRecommendations("tok-1")).rejects.toMatchObject({ code: "bad_response" });
+  });
+
+  it("throws bad_response when target x is 1.5", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ ...validRanking, target: { x: 1.5, y: 0 } }, 200));
+
+    await expect(getRecommendations("tok-1")).rejects.toMatchObject({ code: "bad_response" });
+  });
+
+  it("throws bad_response on a negative gated_out count", async () => {
+    const gatedOut = { ...validRanking.gated_out, over_budget: -1 };
+    fetchMock.mockResolvedValue(jsonResponse({ ...validRanking, gated_out: gatedOut }, 200));
+
+    await expect(getRecommendations("tok-1")).rejects.toMatchObject({ code: "bad_response" });
+  });
+
+  it("throws bad_response on a non-string warning", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ ...validRanking, warnings: [3] }, 200));
+
+    await expect(getRecommendations("tok-1")).rejects.toMatchObject({ code: "bad_response" });
+  });
+
+  it("throws bad_response when terms.budget is missing", async () => {
+    const terms = { fit: true, style: true };
+    fetchMock.mockResolvedValue(jsonResponse({ ...validRanking, terms }, 200));
+
+    await expect(getRecommendations("tok-1")).rejects.toMatchObject({ code: "bad_response" });
+  });
+
+  it("accepts an empty results list", async () => {
+    const body = { ...validRanking, results: [] };
+    fetchMock.mockResolvedValue(jsonResponse(body, 200));
+
+    expect(await getRecommendations("tok-1")).toEqual({ status: "ok", ranking: body });
+  });
+
+  it("throws bad_response on duplicate shoe ids", async () => {
+    const second = { ...validRecommendation, rank: 2 };
+    const body = { ...validRanking, results: [validRecommendation, second] };
+    fetchMock.mockResolvedValue(jsonResponse(body, 200));
+
+    await expect(getRecommendations("tok-1")).rejects.toMatchObject({ code: "bad_response" });
+  });
+
+  it("accepts a null target", async () => {
+    const body = { ...validRanking, target: null };
+    fetchMock.mockResolvedValue(jsonResponse(body, 200));
+
+    expect(await getRecommendations("tok-1")).toEqual({ status: "ok", ranking: body });
   });
 });

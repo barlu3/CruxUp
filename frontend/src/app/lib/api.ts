@@ -1,11 +1,15 @@
 import {
+  CONFIDENCE_LABELS,
   GENDERS,
   PRIOR_SOURCES,
   QUADRANTS,
+  type ConfidenceLabel,
   type Gender,
   type PriorSource,
   type Quadrant,
   type QuadrantShoe,
+  type Recommendation,
+  type RecommendResponse,
   type Shoe,
   type SurveyPayload,
 } from "./types";
@@ -91,6 +95,32 @@ export async function getQuadrant(): Promise<QuadrantShoe[]> {
   return body;
 }
 
+export type GetRecommendationsResult =
+  | { status: "ok"; ranking: RecommendResponse }
+  | { status: "survey_not_found" };
+
+export async function getRecommendations(token: string): Promise<GetRecommendationsResult> {
+  const response = await request("/api/recommend", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ survey_token: token }),
+  });
+
+  // 422 means the stored token is malformed, so it can never match a survey either.
+  if (response.status === 404 || response.status === 422) {
+    await response.body?.cancel();
+    return { status: "survey_not_found" };
+  }
+  if (response.status !== 200) {
+    throw await toStatusError(response);
+  }
+  const body = await readJson(response);
+  if (!isRecommendResponse(body)) {
+    throw new ApiError("bad_response", FALLBACK_MESSAGES.bad_response);
+  }
+  return { status: "ok", ranking: body };
+}
+
 async function request(url: string, init: RequestInit): Promise<Response> {
   try {
     return await fetch(url, init);
@@ -155,6 +185,69 @@ function isQuadrantShoe(value: unknown): value is QuadrantShoe {
     PRIOR_SOURCES.includes(value.prior_source as PriorSource) &&
     typeof value.is_anchor === "boolean" &&
     QUADRANTS.includes(value.quadrant as Quadrant)
+  );
+}
+
+function isUnitScore(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
+}
+
+function isNullableUnitScore(value: unknown): value is number | null {
+  return value === null || isUnitScore(value);
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function isRecommendation(value: unknown, expectedRank: number): value is Recommendation {
+  return (
+    isQuadrantShoe(value) &&
+    "msrp_usd" in value &&
+    (value.msrp_usd === null ||
+      (typeof value.msrp_usd === "number" &&
+        Number.isFinite(value.msrp_usd) &&
+        value.msrp_usd >= 0)) &&
+    "price_unknown" in value &&
+    value.price_unknown === (value.msrp_usd === null) &&
+    "fit_score" in value &&
+    isNullableUnitScore(value.fit_score) &&
+    "style_score" in value &&
+    isNullableUnitScore(value.style_score) &&
+    "budget_score" in value &&
+    isNullableUnitScore(value.budget_score) &&
+    "total_score" in value &&
+    isUnitScore(value.total_score) &&
+    "confidence" in value &&
+    isUnitScore(value.confidence) &&
+    "confidence_label" in value &&
+    CONFIDENCE_LABELS.includes(value.confidence_label as ConfidenceLabel) &&
+    "rank" in value &&
+    value.rank === expectedRank &&
+    "warnings" in value &&
+    isStringArray(value.warnings)
+  );
+}
+
+function isRecommendResponse(value: unknown): value is RecommendResponse {
+  if (!isRecord(value)) return false;
+  const { target, terms, gated_out: gatedOut, results } = value;
+  return (
+    typeof value.scorer_version === "string" &&
+    (target === null ||
+      (isRecord(target) && isUnitCoordinate(target.x) && isUnitCoordinate(target.y))) &&
+    isRecord(terms) &&
+    typeof terms.fit === "boolean" &&
+    typeof terms.style === "boolean" &&
+    typeof terms.budget === "boolean" &&
+    isRecord(gatedOut) &&
+    isCount(gatedOut.over_budget) &&
+    isCount(gatedOut.size_unavailable) &&
+    isCount(gatedOut.unplaced) &&
+    isStringArray(value.warnings) &&
+    Array.isArray(results) &&
+    results.every((result, index) => isRecommendation(result, index + 1)) &&
+    new Set(results.map((result: Recommendation) => result.id)).size === results.length
   );
 }
 
