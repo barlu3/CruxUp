@@ -202,15 +202,6 @@ def test_get_quadrant_route_is_registered_for_get_only():
     assert _openapi_operations(create_app()).get("/quadrant") == {"get"}
 
 
-def test_no_recommend_route_is_registered():
-    """POST /recommend is W7-2, explicitly out of scope for this card.
-    Checked in the schema AND by behaviour, so a route hidden from the
-    schema (include_in_schema=False) could not slip through either."""
-    app = create_app()
-    assert "/recommend" not in _openapi_operations(app)
-    assert TestClient(app).post("/recommend", json={}).status_code == 404
-
-
 def test_post_survey_declares_nothing_for_fastapi_to_validate():
     """The "no validation of its own" rule, pinned at the framework level
     (round-2 review, W71-B): any Body(Model), Query() or Header() on this
@@ -230,21 +221,22 @@ def test_no_cors_middleware_is_installed():
     assert not any(m.cls is CORSMiddleware for m in app.user_middleware)
 
 
-def test_survey_shoes_and_quadrant_handlers_are_plain_functions_not_coroutines():
+def test_survey_shoes_quadrant_and_recommend_handlers_are_plain_functions_not_coroutines():
     """psycopg is synchronous; FastAPI runs sync `def` handlers in its own
     threadpool so the event loop is never blocked -- `async def` here would
     silently block it instead. Read from each module's own APIRouter, which
     FastAPI does not wrap (unlike `app.routes` -- see _openapi_operations)."""
     from app.api.routes.quadrant import router as quadrant_router
+    from app.api.routes.recommend import router as recommend_router
     from app.api.routes.shoes import router as shoes_router
     from app.api.routes.survey import router as survey_router
 
     endpoints = {
         route.path: route.endpoint
-        for router in (survey_router, shoes_router, quadrant_router)
+        for router in (survey_router, shoes_router, quadrant_router, recommend_router)
         for route in router.routes
     }
-    assert set(endpoints) == {"/survey", "/shoes", "/quadrant"}
+    assert set(endpoints) == {"/survey", "/shoes", "/quadrant", "/recommend"}
     for path, endpoint in endpoints.items():
         assert not inspect.iscoroutinefunction(endpoint), (
             f"{path} handler must be a plain `def`, not `async def`"
@@ -923,6 +915,428 @@ def test_get_quadrant_operational_error_does_not_leak_the_marker():
 
 
 # ==========================================================================
+# C2. POST /recommend, hermetic
+# ==========================================================================
+
+RECOMMEND_TOKEN = "tok_AbC-123_secretvalue"
+
+# Column order of the three SELECTs in routes/recommend.py, restated here so
+# a reordering there fails these tests instead of silently mis-mapping rows.
+_SURVEY_COLS = (
+    "id", "foot_width", "instep", "toe_shape", "street_size",
+    "known_good_shoes", "known_bad_shoes", "discipline", "terrain", "level",
+    "goal_x_target", "goal_y_target", "budget_cap_usd",
+)
+_SHOE_COLS = (
+    "id", "brand", "model", "version", "gender", "last_shape", "downturn",
+    "closure", "msrp_usd", "quadrant_x_prior", "quadrant_y_prior",
+    "prior_source", "status",
+)
+
+
+def _survey_tuple(**overrides):
+    values = dict(
+        id=uuid.UUID(int=1), foot_width="narrow", instep=None, toe_shape=None,
+        street_size=None, known_good_shoes=[], known_bad_shoes=[],
+        discipline=None, terrain=None, level=None,
+        goal_x_target=Decimal("0.500"), goal_y_target=Decimal("0.500"),
+        budget_cap_usd=Decimal("250.00"),
+    )
+    values.update(overrides)
+    return tuple(values[c] for c in _SURVEY_COLS)
+
+
+def _shoe_tuple(**overrides):
+    values = dict(
+        id="s-drago", brand="Scarpa", model="Drago", version="", gender="unisex",
+        last_shape="asymmetric", downturn="aggressive", closure="velcro",
+        msrp_usd=Decimal("199.00"), quadrant_x_prior=Decimal("0.800"),
+        quadrant_y_prior=Decimal("0.600"), prior_source="hand", status="active",
+    )
+    values.update(overrides)
+    return tuple(values[c] for c in _SHOE_COLS)
+
+
+class _ScriptedCursor:
+    def __init__(self, conn):
+        self._conn = conn
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+    def execute(self, sql, params=None):
+        self._conn.executes.append((sql, params))
+        if self._conn.raise_on_execute is not None:
+            raise self._conn.raise_on_execute
+
+    def executemany(self, sql, rows):
+        self._conn.executemanys.append((sql, list(rows)))
+
+    def fetchone(self):
+        return self._conn.fetchones.pop(0)
+
+    def fetchall(self):
+        return self._conn.fetchalls.pop(0)
+
+
+class _ScriptedConn:
+    """Answers fetchone()/fetchall() from queues, in call order, and records
+    every execute()/executemany() with its SQL and parameters. Separate from
+    _FakeConn, whose cursor can only return one canned fetchall()."""
+
+    def __init__(self, fetchones=(), fetchalls=(), raise_on_execute=None):
+        self.fetchones = list(fetchones)
+        self.fetchalls = list(fetchalls)
+        self.raise_on_execute = raise_on_execute
+        self.executes = []
+        self.executemanys = []
+        self.commits = 0
+        self.close_calls = 0
+
+    def cursor(self):
+        return _ScriptedCursor(self)
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        pass
+
+    def close(self):
+        self.close_calls += 1
+
+
+def _recommend_conn(survey=None, shoes=None, size_rows=None):
+    """A conn for a known token. `size_rows` is only consumed when the survey
+    sets street_size (the route skips the query otherwise)."""
+    survey = _survey_tuple() if survey is None else survey
+    shoes = [_shoe_tuple()] if shoes is None else shoes
+    fetchalls = [shoes]
+    if size_rows is not None:
+        fetchalls.append(size_rows)
+    return _ScriptedConn(fetchones=[survey], fetchalls=fetchalls)
+
+
+def _post_recommend(conn, body=None, raise_server_exceptions=True):
+    app = create_app()
+    app.dependency_overrides[get_conn] = lambda: conn
+    client = TestClient(app, raise_server_exceptions=raise_server_exceptions)
+    return client.post("/recommend", json={"survey_token": RECOMMEND_TOKEN} if body is None else body)
+
+
+def test_post_recommend_route_is_registered_for_post_only():
+    assert _openapi_operations(create_app()).get("/recommend") == {"post"}
+
+
+def test_post_recommend_declares_no_request_body_for_fastapi_to_validate():
+    operation = create_app().openapi()["paths"]["/recommend"]["post"]
+    assert "requestBody" not in operation
+
+
+def test_recommend_malformed_json_is_422_with_the_errors_envelope():
+    client = _client_with_overrides(conn=_ScriptedConn())
+    resp = client.post("/recommend", content=b"{not json", headers={"content-type": "application/json"})
+    assert (resp.status_code, resp.json()) == (422, {"errors": ["request body is not valid JSON"]})
+
+
+RECOMMEND_BODY_ERROR = {"errors": ['body must be {"survey_token": <token>}']}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"token": "abc"},
+        {"survey_token": "abc", "extra": 1},
+        {"survey_token": 123},
+        {"survey_token": None},
+        {"survey_token": ""},
+        {"survey_token": "a" * 65},
+        {"survey_token": "bad token!"},
+        {"survey_token": "abc\n"},
+        {"survey_token": "toké"},
+        ["abc"],
+        "abc",
+    ],
+    ids=["empty", "wrong-key", "extra-key", "int", "null", "empty-str", "65-chars",
+         "bad-chars", "trailing-newline", "non-ascii", "list", "string"],
+)
+def test_recommend_invalid_body_is_422_with_the_fixed_message(body):
+    conn = _ScriptedConn()
+    resp = _client_with_overrides(conn=conn).post("/recommend", json=body)
+    assert (resp.status_code, resp.json()) == (422, RECOMMEND_BODY_ERROR)
+
+
+def test_recommend_missing_body_is_422():
+    resp = _client_with_overrides(conn=_ScriptedConn()).post("/recommend")
+    assert resp.status_code == 422
+
+
+def test_recommend_64_char_token_passes_validation():
+    conn = _ScriptedConn(fetchones=[None])
+    resp = _client_with_overrides(conn=conn).post("/recommend", json={"survey_token": "a" * 64})
+    assert resp.status_code == 404
+
+
+def test_recommend_422_body_does_not_echo_the_submitted_token():
+    bad = {"survey_token": RECOMMEND_TOKEN, "extra": 1}
+    resp = _client_with_overrides(conn=_ScriptedConn()).post("/recommend", json=bad)
+    assert RECOMMEND_TOKEN not in resp.text
+
+
+def test_recommend_invalid_body_runs_no_sql():
+    conn = _ScriptedConn()
+    _client_with_overrides(conn=conn).post("/recommend", json={})
+    assert conn.executes == []
+
+
+def test_recommend_unknown_token_is_404():
+    resp = _post_recommend(_ScriptedConn(fetchones=[None]))
+    assert resp.status_code == 404
+
+
+def test_recommend_unknown_token_body_is_exactly_the_fixed_envelope():
+    resp = _post_recommend(_ScriptedConn(fetchones=[None]))
+    assert resp.json() == {"errors": ["survey not found"]}
+
+
+def test_recommend_unknown_token_never_commits():
+    conn = _ScriptedConn(fetchones=[None])
+    _post_recommend(conn)
+    assert conn.commits == 0
+
+
+def test_recommend_valid_token_is_200():
+    assert _post_recommend(_recommend_conn()).status_code == 200
+
+
+def test_recommend_reports_the_v0_slice_scorer_version():
+    assert _post_recommend(_recommend_conn()).json()["scorer_version"] == "v0-slice"
+
+
+def test_recommend_results_are_ordered_by_rank():
+    shoes = [
+        _shoe_tuple(id="s-a", model="Aaa", msrp_usd=Decimal("240.00")),
+        _shoe_tuple(id="s-b", model="Bbb", msrp_usd=Decimal("100.00")),
+        _shoe_tuple(id="s-c", model="Ccc", msrp_usd=Decimal("150.00")),
+    ]
+    results = _post_recommend(_recommend_conn(shoes=shoes)).json()["results"]
+    assert [r["rank"] for r in results] == [1, 2, 3]
+
+
+def test_recommend_cheaper_shoe_ranks_first_when_only_budget_differs():
+    shoes = [
+        _shoe_tuple(id="s-a", model="Aaa", msrp_usd=Decimal("240.00")),
+        _shoe_tuple(id="s-b", model="Bbb", msrp_usd=Decimal("100.00")),
+    ]
+    results = _post_recommend(_recommend_conn(shoes=shoes)).json()["results"]
+    assert results[0]["id"] == "s-b"
+
+
+def test_recommend_null_msrp_shoe_has_price_unknown_true():
+    shoes = [_shoe_tuple(msrp_usd=None)]
+    result = _post_recommend(_recommend_conn(shoes=shoes)).json()["results"][0]
+    assert (result["price_unknown"], result["msrp_usd"]) == (True, None)
+
+
+def test_recommend_priced_shoe_has_price_unknown_false_and_a_float_msrp():
+    result = _post_recommend(_recommend_conn()).json()["results"][0]
+    assert (result["price_unknown"], result["msrp_usd"]) == (False, 199.0)
+
+
+def test_recommend_survey_select_binds_the_token_as_a_parameter():
+    conn = _recommend_conn()
+    _post_recommend(conn)
+    sql, params = conn.executes[0]
+    assert (params, "%(token)s" in sql) == ({"token": RECOMMEND_TOKEN}, True)
+
+
+def test_recommend_sql_text_never_contains_the_token():
+    conn = _recommend_conn()
+    _post_recommend(conn)
+    assert not any(RECOMMEND_TOKEN in sql for sql, _ in conn.executes + conn.executemanys)
+
+
+def test_recommend_survey_select_locks_the_row():
+    conn = _recommend_conn()
+    _post_recommend(conn)
+    assert conn.executes[0][0].rstrip().endswith("FOR UPDATE")
+
+
+def test_recommend_upsert_row_count_equals_result_count():
+    shoes = [_shoe_tuple(id="s-a", model="Aaa"), _shoe_tuple(id="s-b", model="Bbb")]
+    conn = _recommend_conn(shoes=shoes)
+    body = _post_recommend(conn).json()
+    assert len(conn.executemanys[0][1]) == len(body["results"])
+
+
+def test_recommend_upsert_rows_carry_the_response_total_and_version():
+    conn = _recommend_conn()
+    body = _post_recommend(conn).json()
+    row = conn.executemanys[0][1][0]
+    assert (row["total_score"], row["scorer_version"], row["rank"]) == (
+        body["results"][0]["total_score"], "v0-slice", 1)
+
+
+def test_recommend_upsert_sql_never_touches_feedback_columns():
+    conn = _recommend_conn()
+    _post_recommend(conn)
+    sql = conn.executemanys[0][0]
+    assert not any(col in sql for col in ("accepted", "satisfaction", "returned", "feedback_at"))
+
+
+def test_recommend_delete_spares_rows_with_feedback_and_binds_kept_ids():
+    conn = _recommend_conn()
+    _post_recommend(conn)
+    sql, params = conn.executes[-1]
+    assert ("feedback_at IS NULL" in sql, params["kept"]) == (True, ["s-drago"])
+
+
+def test_recommend_success_commits_exactly_once():
+    conn = _recommend_conn()
+    _post_recommend(conn)
+    assert conn.commits == 1
+
+
+def test_recommend_size_query_is_skipped_without_a_street_size():
+    conn = _recommend_conn()
+    _post_recommend(conn)
+    assert not any("shoe_size_map" in sql for sql, _ in conn.executes)
+
+
+def test_recommend_size_unavailable_shoe_is_gated_out_when_street_size_is_set():
+    size_rows = [("s-drago", Decimal("9.5"), False)]
+    conn = _recommend_conn(survey=_survey_tuple(street_size=Decimal("9.5")), size_rows=size_rows)
+    body = _post_recommend(conn).json()
+    assert (body["gated_out"]["size_unavailable"], body["results"]) == (1, [])
+
+
+def test_recommend_size_query_binds_the_street_size():
+    conn = _recommend_conn(survey=_survey_tuple(street_size=Decimal("9.5")), size_rows=[])
+    _post_recommend(conn)
+    sql, params = next(c for c in conn.executes if "shoe_size_map" in c[0])
+    assert params == {"size": Decimal("9.5")}
+
+
+def test_recommend_no_target_yields_target_null():
+    survey = _survey_tuple(goal_x_target=None, goal_y_target=None)
+    assert _post_recommend(_recommend_conn(survey=survey)).json()["target"] is None
+
+
+def test_recommend_target_is_an_xy_object_when_set():
+    assert _post_recommend(_recommend_conn()).json()["target"] == {"x": 0.5, "y": 0.5}
+
+
+def test_recommend_gated_out_and_terms_are_reported():
+    body = _post_recommend(_recommend_conn()).json()
+    assert (body["terms"], body["gated_out"]) == (
+        {"fit": True, "style": True, "budget": True},
+        {"over_budget": 0, "size_unavailable": 0, "unplaced": 0},
+    )
+
+
+def test_recommend_result_keys_include_every_quadrant_shoe_field():
+    from app.api.routes.quadrant import QuadrantShoeOut
+
+    result = _post_recommend(_recommend_conn()).json()["results"][0]
+    assert set(QuadrantShoeOut.model_fields) <= set(result)
+
+
+def test_recommend_result_has_the_scoring_fields():
+    result = _post_recommend(_recommend_conn()).json()["results"][0]
+    assert {"msrp_usd", "price_unknown", "fit_score", "style_score", "budget_score",
+            "total_score", "confidence", "confidence_label", "rank", "warnings"} <= set(result)
+
+
+def test_recommend_unused_term_scores_are_null():
+    survey = _survey_tuple(foot_width=None, budget_cap_usd=None)
+    result = _post_recommend(_recommend_conn(survey=survey)).json()["results"][0]
+    assert (result["fit_score"], result["budget_score"]) == (None, None)
+
+
+def test_recommend_scorer_value_error_is_the_masked_500():
+    survey = _survey_tuple(goal_x_target=Decimal("0.5"), goal_y_target=None)
+    resp = _post_recommend(_recommend_conn(survey=survey), raise_server_exceptions=False)
+    assert (resp.status_code, resp.json()) == (500, {"detail": "could not complete the request"})
+
+
+def test_recommend_scorer_error_never_commits():
+    survey = _survey_tuple(goal_x_target=Decimal("0.5"), goal_y_target=None)
+    conn = _recommend_conn(survey=survey)
+    _post_recommend(conn, raise_server_exceptions=False)
+    assert conn.commits == 0
+
+
+def test_recommend_invalid_body_never_opens_a_database_connection(real_get_conn):
+    opened, _ = real_get_conn
+    resp = TestClient(create_app()).post("/recommend", json={"survey_token": "bad token!"})
+    assert (resp.status_code, opened) == (422, [])
+
+
+def test_recommend_scorer_result_failing_response_validation_never_commits(monkeypatch):
+    import app.api.routes.recommend as route
+
+    real = route.score.recommend
+
+    def corrupt(survey, shoes, size_rows):
+        ranking = real(survey, shoes, size_rows)
+        bad = dict(ranking.results[0], total_score=float("nan"))
+        return route.score.Ranking(
+            ranking.scorer_version, ranking.target, ranking.terms,
+            ranking.gated_out, ranking.warnings, (bad,))
+
+    monkeypatch.setattr(route.score, "recommend", corrupt)
+    conn = _recommend_conn()
+    resp = _post_recommend(conn, raise_server_exceptions=False)
+    assert (resp.status_code, conn.commits) == (500, 0)
+
+
+def test_recommend_empty_results_still_delete_with_an_empty_kept_list():
+    conn = _recommend_conn(shoes=[_shoe_tuple(msrp_usd=Decimal("999.00"))])
+    _post_recommend(conn)
+    sql, params = conn.executes[-1]
+    assert (sql.startswith("DELETE FROM recommendation"), params["kept"], conn.executemanys) == (
+        True, [], [])
+
+
+def test_recommend_404_and_422_responses_are_described_in_openapi():
+    responses = create_app().openapi()["paths"]["/recommend"]["post"]["responses"]
+    assert (responses["404"]["description"], responses["422"]["description"]) == (
+        "No survey exists for the given survey_token.",
+        "Body is not exactly {\"survey_token\": <token>}, or is not valid JSON.",
+    )
+
+
+def test_recommend_operational_error_is_503_with_the_generic_body():
+    conn = _ScriptedConn(raise_on_execute=psycopg.OperationalError("conn refused host=db"))
+    resp = _post_recommend(conn, raise_server_exceptions=False)
+    assert (resp.status_code, resp.json()) == (503, {"detail": "database unavailable"})
+
+
+def test_recommend_503_body_does_not_contain_the_token():
+    conn = _ScriptedConn(raise_on_execute=psycopg.OperationalError("boom"))
+    assert RECOMMEND_TOKEN not in _post_recommend(conn, raise_server_exceptions=False).text
+
+
+def test_recommend_failure_never_commits():
+    conn = _ScriptedConn(raise_on_execute=psycopg.OperationalError("boom"))
+    _post_recommend(conn, raise_server_exceptions=False)
+    assert conn.commits == 0
+
+
+def test_recommend_token_is_absent_from_logs(caplog):
+    conn = _ScriptedConn(raise_on_execute=psycopg.OperationalError(f"boom {RECOMMEND_TOKEN}"))
+    with caplog.at_level("DEBUG"):
+        _post_recommend(conn, raise_server_exceptions=False)
+        _client_with_overrides(conn=_ScriptedConn(fetchones=[None])).post(
+            "/recommend", json={"survey_token": RECOMMEND_TOKEN})
+    assert RECOMMEND_TOKEN not in caplog.text
+
+
+# ==========================================================================
 # D. DB-backed tests -- skip cleanly (never fail) when no database is
 #    reachable, mirroring test_survey.py's own db_conn fixture. Must
 #    actually RUN, not skip, when the DB is up: CI's integration job fails
@@ -1131,3 +1545,134 @@ def test_db_get_quadrant_each_anchor_sits_in_its_section_3_quadrant(live_client,
         (i["brand"], i["model"], i["version"]): i["quadrant"] for i in body if i["is_anchor"]
     }
     assert actual == ANCHORS
+
+
+# --- POST /recommend, DB-backed ---------------------------------------------
+
+def _create_survey_row(db_conn, **overrides):
+    """Insert a survey through the store (the only supported writer) and
+    commit, so the app's own connection can see it."""
+    row, errors = ST.build_survey_row(
+        {"discipline": "sport", "terrain": "overhang", "level": "advanced",
+         "budget_cap_usd": 400, **overrides}, A.PostgresCatalog(db_conn))
+    assert errors == []
+    return ST.insert_survey(db_conn, row)
+
+
+def _recommendation_rows(db_conn, token):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "SELECT r.shoe_id::text, r.total_score, r.scorer_version, r.rank, "
+            "r.accepted, r.feedback_at FROM recommendation r "
+            "JOIN user_survey s ON s.id = r.survey_id WHERE s.survey_token = %s "
+            "ORDER BY r.rank", (token,))
+        rows = cur.fetchall()
+    db_conn.rollback()
+    return rows
+
+
+def _delete_survey_row(db_conn, token):
+    # recommendation rows go with it: ON DELETE CASCADE.
+    db_conn.rollback()
+    with db_conn.cursor() as cur:
+        cur.execute("DELETE FROM user_survey WHERE survey_token = %s", (token,))
+    db_conn.commit()
+
+
+def test_db_recommend_persists_one_row_per_active_placed_in_budget_shoe(live_client, db_conn, seeded_db):
+    token = _create_survey_row(db_conn)
+    try:
+        body = live_client.post("/recommend", json={"survey_token": token}).json()
+        with db_conn.cursor() as cur:
+            cur.execute(
+                "SELECT count(*) FROM shoe WHERE status = 'active' "
+                "AND quadrant_x_prior IS NOT NULL AND (msrp_usd IS NULL OR msrp_usd <= 400)")
+            (expected,) = cur.fetchone()
+        assert len(_recommendation_rows(db_conn, token)) == expected == len(body["results"])
+    finally:
+        _delete_survey_row(db_conn, token)
+
+
+def test_db_recommend_re_request_leaves_the_row_count_unchanged(live_client, db_conn, seeded_db):
+    token = _create_survey_row(db_conn)
+    try:
+        live_client.post("/recommend", json={"survey_token": token})
+        first = len(_recommendation_rows(db_conn, token))
+        live_client.post("/recommend", json={"survey_token": token})
+        assert len(_recommendation_rows(db_conn, token)) == first
+    finally:
+        _delete_survey_row(db_conn, token)
+
+
+def test_db_recommend_re_request_preserves_feedback_set_between_calls(live_client, db_conn, seeded_db):
+    token = _create_survey_row(db_conn)
+    try:
+        first = live_client.post("/recommend", json={"survey_token": token}).json()
+        shoe_id = first["results"][0]["id"]
+        with db_conn.cursor() as cur:
+            cur.execute(
+                "UPDATE recommendation SET accepted = TRUE, feedback_at = now() "
+                "WHERE shoe_id = %s AND survey_id = (SELECT id FROM user_survey WHERE survey_token = %s)",
+                (shoe_id, token))
+        db_conn.commit()
+        live_client.post("/recommend", json={"survey_token": token})
+        row = next(r for r in _recommendation_rows(db_conn, token) if r[0] == shoe_id)
+        assert (row[4], row[5] is not None) == (True, True)
+    finally:
+        _delete_survey_row(db_conn, token)
+
+
+def test_db_recommend_shoe_gated_out_after_a_cap_change_is_deleted_without_feedback(live_client, db_conn, seeded_db):
+    token = _create_survey_row(db_conn)
+    try:
+        first = live_client.post("/recommend", json={"survey_token": token}).json()
+        priced = [r for r in first["results"] if r["msrp_usd"] is not None]
+        dearest = max(priced, key=lambda r: r["msrp_usd"])
+        with db_conn.cursor() as cur:
+            cur.execute("UPDATE user_survey SET budget_cap_usd = %s WHERE survey_token = %s",
+                        (dearest["msrp_usd"] - 1, token))
+        db_conn.commit()
+        live_client.post("/recommend", json={"survey_token": token})
+        assert dearest["id"] not in [r[0] for r in _recommendation_rows(db_conn, token)]
+    finally:
+        _delete_survey_row(db_conn, token)
+
+
+def test_db_recommend_persisted_total_score_equals_the_response(live_client, db_conn, seeded_db):
+    token = _create_survey_row(db_conn)
+    try:
+        body = live_client.post("/recommend", json={"survey_token": token}).json()
+        stored = {r[0]: float(r[1]) for r in _recommendation_rows(db_conn, token)}
+        assert stored == {r["id"]: r["total_score"] for r in body["results"]}
+    finally:
+        _delete_survey_row(db_conn, token)
+
+
+def test_db_recommend_persisted_scorer_version_is_v0_slice(live_client, db_conn, seeded_db):
+    token = _create_survey_row(db_conn)
+    try:
+        live_client.post("/recommend", json={"survey_token": token})
+        assert {r[2] for r in _recommendation_rows(db_conn, token)} == {"v0-slice"}
+    finally:
+        _delete_survey_row(db_conn, token)
+
+
+def test_db_recommend_cap_below_every_priced_shoe_leaves_only_unpriced_rows(live_client, db_conn, seeded_db):
+    """NULL-MSRP shoes are never price-gated, so the seeded catalogue cannot
+    produce an empty ranking; the empty case is pinned hermetically."""
+    token = _create_survey_row(db_conn)
+    try:
+        live_client.post("/recommend", json={"survey_token": token})
+        with db_conn.cursor() as cur:
+            cur.execute("UPDATE user_survey SET budget_cap_usd = 0.01 WHERE survey_token = %s", (token,))
+        db_conn.commit()
+        live_client.post("/recommend", json={"survey_token": token})
+        stored = {r[0] for r in _recommendation_rows(db_conn, token)}
+        with db_conn.cursor() as cur:
+            cur.execute("SELECT id::text FROM shoe WHERE status = 'active' "
+                        "AND quadrant_x_prior IS NOT NULL AND msrp_usd IS NULL")
+            unpriced = {r[0] for r in cur.fetchall()}
+        db_conn.rollback()
+        assert stored == unpriced
+    finally:
+        _delete_survey_row(db_conn, token)

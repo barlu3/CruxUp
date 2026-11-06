@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -69,6 +70,8 @@ from app.config import load_dotenv
 # it, a connection attempt against an address nothing listens on can hang
 # far longer than any reasonable request should wait.
 CONNECT_TIMEOUT_SECONDS = 5
+
+SURVEY_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
 class DatabaseNotConfigured(Exception):
@@ -113,6 +116,26 @@ async def json_body(request: Request) -> Any:
         return json.loads(raw)
     except (ValueError, RecursionError) as exc:
         raise MalformedJSONBody("request body is not valid JSON") from exc
+
+
+class InvalidSurveyTokenBody(Exception):
+    """Raised by survey_token_body() for a POST /recommend body that is not
+    exactly {"survey_token": <token>}. main.py maps it to a fixed 422; the
+    submitted value is never carried on the exception."""
+
+
+async def survey_token_body(payload: Any = Depends(json_body)) -> str:
+    """The validated survey_token of a POST /recommend body. A dependency of
+    its own, declared before get_conn on the route, so a bad body is rejected
+    before any database connection is opened."""
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != {"survey_token"}
+        or not isinstance(payload["survey_token"], str)
+        or SURVEY_TOKEN_PATTERN.fullmatch(payload["survey_token"]) is None
+    ):
+        raise InvalidSurveyTokenBody("body must be {\"survey_token\": <token>}")
+    return payload["survey_token"]
 
 
 def database_url() -> str | None:

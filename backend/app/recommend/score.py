@@ -90,8 +90,8 @@ def recommend(
     if not weights:
         warnings.append("no_scoring_inputs")
 
-    good_ids = {e["shoe_id"] for e in good_entries}
-    bad_ids = {e["shoe_id"] for e in bad_entries}
+    good_ids = {e.get("shoe_id") for e in good_entries}
+    bad_ids = {e.get("shoe_id") for e in bad_entries}
     survey_conf = conf.c_survey(survey, has_anchors)
     street_size = _to_float(survey.get("street_size"))
     unavailable = _unavailable_sizes(size_rows)

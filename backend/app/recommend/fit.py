@@ -61,13 +61,14 @@ def anchor_families(
     anchor_entries: Iterable[Mapping[str, Any]], shoes_by_id: Mapping[str, Mapping[str, Any]]
 ) -> tuple[list[Family], list[str]]:
     """Look anchors up by shoe_id. An id missing from the catalog (shoe since
-    removed) is skipped and counted in one warning, never an error: one stale
-    anchor must not take down the whole recommendation."""
+    removed), or an entry with no shoe_id at all, is skipped and counted in
+    one warning, never an error: one stale anchor must not take down the
+    whole recommendation."""
     families: list[Family] = []
     warnings: list[str] = []
     missing = 0
     for entry in anchor_entries:
-        shoe = shoes_by_id.get(entry["shoe_id"])
+        shoe = shoes_by_id.get(entry.get("shoe_id"))
         if shoe is None:
             missing += 1
             continue
