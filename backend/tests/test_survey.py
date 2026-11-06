@@ -35,7 +35,10 @@ SURVEY_DIR = Path(__file__).resolve().parents[1] / "app" / "survey"
 MIGRATION = Path(__file__).resolve().parents[1] / "app" / "db" / "migrations" / "0001_init.sql"
 
 sys.path.insert(0, str(SURVEY_DIR))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
 import anchors as A   # noqa: E402
+import config as CFG  # noqa: E402
+import preferences as P  # noqa: E402
 import schema as S    # noqa: E402
 import store as ST    # noqa: E402
 
@@ -711,8 +714,7 @@ def test_build_survey_row_full_valid_submission():
         "discipline": "boulder",
         "terrain": "overhang",
         "level": "advanced",
-        "goal_x_target": 0.5,
-        "goal_y_target": 0.5,
+        "goal": 0.5,
         "budget_cap_usd": 200.0,
         "known_good_shoes": [{"brand": "Scarpa", "model": "Drago"}],
         "known_bad_shoes": [{"brand": "Evolv", "model": "Defy", "gender": "mens"}],
@@ -1414,3 +1416,173 @@ def test_cli_store_accepts_a_non_ascii_size_under_a_non_utf8_locale(db_conn, tmp
     )
     assert result.returncode == 0, result.stderr
     assert "[dry run, rolled back] survey_token=" in result.stdout
+
+
+# ==========================================================================
+# K. goal -> goal_x_target / goal_y_target (timeline.md section 13, option a)
+#    The raw `goal` is converted by preferences.target_quadrant() before
+#    validation and is never persisted.
+# ==========================================================================
+
+def _goal_errors(payload):
+    return ST.build_survey_row(payload, _catalog())[1]
+
+
+def test_build_survey_row_derives_targets_from_discipline_alone():
+    row, _ = ST.build_survey_row({"discipline": "sport"}, _catalog())
+    assert (row["goal_x_target"], row["goal_y_target"]) == (0.55, -0.55)
+
+
+def test_build_survey_row_applies_goal_to_the_x_target():
+    row, _ = ST.build_survey_row({"discipline": "trad", "goal": 1}, _catalog())
+    assert row["goal_x_target"] == -0.4
+
+
+def test_build_survey_row_never_carries_goal_into_the_row():
+    row, _ = ST.build_survey_row({"discipline": "trad", "goal": 1}, _catalog())
+    assert "goal" not in row
+
+
+def test_insert_params_from_a_goal_submission_contain_no_goal():
+    row, _ = ST.build_survey_row({"discipline": "trad", "goal": 1}, _catalog())
+    conn = _FakeConn()
+    ST.insert_survey(conn, row, dry_run=True)
+    assert "goal" not in conn.calls[0][1]
+
+
+def test_build_survey_row_does_not_mutate_the_callers_payload():
+    payload = {"discipline": "trad", "goal": 1}
+    ST.build_survey_row(payload, _catalog())
+    assert payload == {"discipline": "trad", "goal": 1}
+
+
+def test_goal_without_discipline_is_one_error_naming_goal():
+    errors = _goal_errors({"goal": 0.5})
+    assert errors == ["goal requires discipline"]
+
+
+def test_out_of_range_goal_reports_target_quadrants_own_message():
+    with pytest.raises(ValueError) as expected:
+        P.target_quadrant("gym", None, None, 2)
+    assert _goal_errors({"discipline": "gym", "goal": 2}) == [str(expected.value)]
+
+
+def test_boolean_goal_is_rejected():
+    assert _goal_errors({"discipline": "gym", "goal": True}) == ["goal must be a number, got bool"]
+
+
+def test_string_goal_is_rejected():
+    assert _goal_errors({"discipline": "gym", "goal": "0.5"}) == ["goal must be a number, got str"]
+
+
+def test_nan_goal_is_rejected():
+    assert _goal_errors({"discipline": "gym", "goal": float("nan")}) == ["goal=nan must be finite"]
+
+
+def test_infinite_goal_is_rejected():
+    assert _goal_errors({"discipline": "gym", "goal": float("inf")}) == ["goal=inf must be finite"]
+
+
+def test_null_goal_means_no_goal():
+    row, _ = ST.build_survey_row({"discipline": "gym", "goal": None}, _catalog())
+    assert row["goal_x_target"] == -0.55
+
+
+def test_oversized_integer_goal_gets_a_fixed_message_without_python_internals():
+    assert _goal_errors({"discipline": "gym", "goal": 10**5000}) == ["goal must be a number in [-1.0, 1.0]"]
+
+
+def test_unknown_discipline_with_goal_is_reported_exactly_once():
+    expected = S.validate({"discipline": "approach"})
+    assert _goal_errors({"discipline": "approach", "goal": 0.5}) == expected
+
+
+def test_non_string_discipline_with_goal_is_reported_exactly_once():
+    expected = S.validate({"discipline": ["gym"]})
+    assert _goal_errors({"discipline": ["gym"], "goal": 0.5}) == expected
+
+
+def test_bad_goal_error_precedes_the_anchor_error():
+    errors = _goal_errors({
+        "discipline": "gym", "goal": 2,
+        "known_good_shoes": [{"brand": "Nike", "model": "Air Max"}],
+    })
+    with pytest.raises(ValueError) as goal_error:
+        P.target_quadrant("gym", None, None, 2)
+    anchor_errors = A.resolve_anchors(
+        [{"brand": "Nike", "model": "Air Max"}], [], _catalog()
+    )[2]
+    assert errors == [str(goal_error.value)] + anchor_errors
+
+
+def test_caller_supplied_goal_x_target_is_refused():
+    assert _goal_errors({"discipline": "gym", "goal_x_target": 0.1}) == [
+        "['goal_x_target']: derived from discipline/terrain/level/goal and must "
+        "not be supplied by the caller"
+    ]
+
+
+def test_caller_supplied_goal_y_target_is_refused_without_discipline():
+    assert _goal_errors({"goal_y_target": 0.1}) == [
+        "['goal_y_target']: derived from discipline/terrain/level/goal and must "
+        "not be supplied by the caller"
+    ]
+
+
+def test_explicit_null_goal_target_is_still_refused():
+    assert _goal_errors({"goal_x_target": None}) == [
+        "['goal_x_target']: derived from discipline/terrain/level/goal and must "
+        "not be supplied by the caller"
+    ]
+
+
+def test_empty_submission_has_null_targets():
+    row, _ = ST.build_survey_row({}, _catalog())
+    assert row["goal_x_target"] is None
+
+
+def test_non_mapping_payload_keeps_the_existing_error():
+    assert _goal_errors([1]) == ["payload must be a mapping, got list"]
+
+
+class _ConnectedFake(_FakeConn):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+
+def _run_main_with_fake_connection(tmp_path, monkeypatch, submission):
+    import psycopg
+
+    payload = tmp_path / "payload.json"
+    payload.write_text(json.dumps(submission))
+    monkeypatch.setattr(psycopg, "connect", lambda url: _ConnectedFake())
+    monkeypatch.setattr(sys, "argv", ["store.py", str(payload), "--database-url", "fake://db", "--dry-run"])
+    return ST.main()
+
+
+def test_store_main_derives_targets_once_and_accepts_a_discipline_submission(tmp_path, monkeypatch):
+    """main() pre-validates offline and then build_survey_row() validates
+    again; the second pass must see the ORIGINAL payload, not the prepared
+    copy, or it would refuse the derived targets as caller-supplied."""
+    exit_code = _run_main_with_fake_connection(
+        tmp_path, monkeypatch, {"discipline": "gym", "goal": 0.5}
+    )
+    assert exit_code == 0
+
+
+def test_store_main_with_goal_gets_past_offline_validation(tmp_path, monkeypatch):
+    """Exit 2 (no DATABASE_URL) rather than 1 proves the goal was converted
+    before the offline pre-validation, not rejected as an unknown key. See
+    test_store_main_exits_2_without_a_database_url for the .env isolation."""
+    payload = tmp_path / "payload.json"
+    payload.write_text(json.dumps({"discipline": "gym", "goal": 0.5}))
+    empty_env = tmp_path / "empty.env"
+    empty_env.write_text("")
+    monkeypatch.setattr(CFG, "DEFAULT_ENV", empty_env)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setattr(sys, "argv", ["store.py", str(payload)])
+
+    assert ST.main() == 2
