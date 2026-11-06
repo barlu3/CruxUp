@@ -1276,6 +1276,22 @@ def test_recommend_scorer_value_error_is_the_masked_500():
     assert (resp.status_code, resp.json()) == (500, {"detail": "could not complete the request"})
 
 
+@pytest.mark.parametrize("bad", [
+    {"prior_source": "corpus"},  # defined by W3-4; validate.py and the schema allow it
+    {"quadrant_x_prior": Decimal("0.000")},  # on-axis; validate.py rejects it
+    {"last_shape": "banana"},  # no CHECK and no validate.py rule
+], ids=["corpus-prior", "on-axis-prior", "unknown-last-shape"])
+def test_recommend_one_bad_active_shoe_fails_the_whole_request_loudly(bad):
+    """Known availability limit (ARCHITECTURE section 4.13): the scorer does
+    not skip a corrupt catalogue row, so every /recommend is a masked 500
+    until the row is fixed. validate.py and the seed are the guard."""
+    shoes = [_shoe_tuple(), _shoe_tuple(id="s-bad", model="Bad", **bad)]
+    conn = _recommend_conn(shoes=shoes)
+    resp = _post_recommend(conn, raise_server_exceptions=False)
+    assert (resp.status_code, resp.json(), conn.commits) == (
+        500, {"detail": "could not complete the request"}, 0)
+
+
 def test_recommend_scorer_error_never_commits():
     survey = _survey_tuple(goal_x_target=Decimal("0.5"), goal_y_target=None)
     conn = _recommend_conn(survey=survey)
