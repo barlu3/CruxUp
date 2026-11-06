@@ -104,7 +104,7 @@ export function AnchorPicker({ label, shoes, value, onChange }: AnchorPickerProp
         <ul
           id={listboxId}
           role="listbox"
-          aria-label={label}
+          aria-label={`${label} suggestions`}
           hidden={!isOpen || options.length === 0}
           // mousedown would blur the input and close the list before click fires.
           onMouseDown={(event) => event.preventDefault()}

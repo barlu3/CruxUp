@@ -165,6 +165,11 @@ describe("AnchorPicker", () => {
     expect(within(listbox).queryByText("No matching shoes")).toBeNull();
   });
 
+  it("names the listbox differently from the input", () => {
+    renderPicker();
+    expect(screen.getByRole("listbox", { hidden: true })).toHaveAttribute("aria-label", "Shoes you love suggestions");
+  });
+
   it("hides the listbox when there are no options", () => {
     renderPicker();
     typeQuery("zzzzqqq");
