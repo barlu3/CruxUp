@@ -17,4 +17,11 @@ describe("Home page", () => {
       screen.getByRole("link", { name: /start the questionnaire/i }),
     ).toHaveAttribute("href", "/survey");
   });
+
+  it("links to the shoe quadrant", () => {
+    render(<Home />);
+    expect(
+      screen.getByRole("link", { name: "Explore the shoe quadrant" }),
+    ).toHaveAttribute("href", "/quadrant");
+  });
 });

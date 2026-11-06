@@ -1,0 +1,108 @@
+import AxeBuilder from "@axe-core/playwright";
+import { expect, test } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
+
+// fixtures/quadrant.json ordered by x: Scarpa Origin, Black Diamond Momentum, ...
+const FIRST_SHOE = /^Scarpa Origin/;
+const SECOND_SHOE = "Black Diamond Momentum (unisex)";
+
+test("home link to the quadrant lands on the quadrant page", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("link", { name: "Explore the shoe quadrant" }).click();
+  await expect(page).toHaveURL(/\/quadrant$/);
+  await expect(page).toHaveTitle("Shoe quadrant | CruxUp");
+});
+
+test("quadrant page shows the Q4 quadrant label on the chart", async ({ page }) => {
+  await openQuadrant(page);
+  await expect(page.locator("figure svg text", { hasText: "Q4" })).toBeVisible();
+});
+
+test("table lists Scarpa Drago in the Q4 group", async ({ page }) => {
+  await openQuadrant(page);
+  const q4Group = page.locator("tbody").filter({ hasText: "Q4 · Performance + soft" });
+  await expect(q4Group).toContainText("Scarpa Drago");
+});
+
+test("Tab then ArrowRight shows a tooltip naming the second shoe by x-order", async ({ page }) => {
+  await openQuadrant(page);
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("ArrowRight");
+  await expect(tooltip(page)).toContainText(SECOND_SHOE);
+});
+
+test("hovering the Drago point shows its tooltip", async ({ page }) => {
+  await openQuadrant(page);
+  await hoverMark(page, /^Scarpa Drago/);
+  await expect(tooltip(page)).toContainText("Scarpa Drago (unisex)");
+});
+
+// Elektra shares Defy's coordinates and comes later in x-order, so its hit area used to cover
+// Defy's mark. 7.5 units from the centre is on Defy's anchor ring, outside Elektra's smaller mark.
+test("hovering the visible edge of Defy's mark shows Defy's tooltip, not Elektra's", async ({ page }) => {
+  await openQuadrant(page);
+  await hoverMark(page, /^Evolv Defy/, -7.5);
+  await expect(tooltip(page)).toContainText("Evolv Defy (men's)");
+});
+
+test("the tooltip stays open while the pointer is over it", async ({ page }) => {
+  await openQuadrant(page);
+  await hoverMark(page, /^Scarpa Drago/);
+  await tooltip(page).hover();
+  // Longer than the chart's 300 ms hide delay, so a tooltip that ignored the pointer would be gone.
+  await page.waitForTimeout(600);
+  await expect(tooltip(page)).toContainText("Scarpa Drago (unisex)");
+});
+
+test("Escape hides a shown tooltip", async ({ page }) => {
+  await openQuadrant(page);
+  await hoverMark(page, /^Scarpa Drago/);
+  await expect(tooltip(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(tooltip(page)).toBeHidden();
+});
+
+test("quadrant page has no horizontal page scroll at 375px", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await openQuadrant(page);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("the browser only calls the app's own /api/quadrant", async ({ page }) => {
+  const urls: string[] = [];
+  page.on("request", (r) => urls.push(r.url()));
+  await openQuadrant(page);
+  expect(urls.some((u) => u.endsWith("/api/quadrant"))).toBe(true);
+  expect(urls.filter((u) => !u.startsWith("data:") && new URL(u).origin !== "http://localhost:3100")).toEqual([]);
+});
+
+test("WCAG 2 A/AA scan of the quadrant page with a tooltip shown", async ({ page }) => {
+  await openQuadrant(page);
+  await hoverMark(page, /^Scarpa Drago/);
+  await expect(tooltip(page)).toBeVisible();
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(results.violations).toEqual([]);
+});
+
+async function openQuadrant(page: Page) {
+  await page.goto("/quadrant");
+  await expect(page.getByRole("img", { name: FIRST_SHOE })).toBeVisible();
+}
+
+// The tooltip is aria-hidden by design, so role queries would skip it.
+function tooltip(page: Page): Locator {
+  return page.locator('[role="tooltip"]');
+}
+
+// Moves the pointer to a point's mark, offset left by dx viewBox units. The visible marks sit in an
+// aria-hidden top layer, so the point is found by its hit circle (radius 20 units), whose box is
+// centred on the mark; the group's own box is skewed by its text label.
+async function hoverMark(page: Page, name: RegExp, dx = 0) {
+  const box = await page.getByRole("img", { name }).locator("circle").first().boundingBox();
+  if (!box) throw new Error(`no hit circle for ${name}`);
+  const scale = box.width / 40;
+  await page.mouse.move(box.x + box.width / 2 + dx * scale, box.y + box.height / 2);
+}

@@ -2,7 +2,7 @@
 
 A reference for the structure, data model and design of the CruxUp climbing shoe recommender. It describes the software **as implemented** and marks where the planned design has not been built yet.
 
-- **Last verified against the codebase:** 2026-10-01
+- **Last verified against the codebase:** 2026-11-06
 - **Plan, tasks and decisions of record:** [`timeline.md`](../timeline.md). Decision IDs (D1–D12) and task IDs (W0-1a, …) below refer to it.
 - **Local setup:** [`SETUP.md`](../SETUP.md)
 - **Verification:** the commands at the foot of this document re-check the claims that can be checked mechanically.
@@ -21,8 +21,8 @@ A reference for the structure, data model and design of the CruxUp climbing shoe
   - Q1 performance+stiff · Q2 comfort+stiff · Q3 comfort+soft · Q4 performance+soft
 - **Placement provenance.** A shoe's position has one of three sources, ranked by confidence: **corpus** (aggregated community discussion) > **hand** (human judgement) > **spec** (derived from manufacturer specifications). The source is stored with every placement.
 - **Build state:**
-  - **Implemented:** the product database schema, the shoe catalogue and its validator, a spec-to-placement model, the catalogue loader, environment configuration, a source-agnostic corpus collector, survey capture (§4.7), preference→target (`q*`) derivation (§4.8), an HTTP API with `POST /survey` and `GET /shoes` (§4.9), and the frontend shell with its component and end-to-end test harness (§4.10).
-  - **Also implemented:** the questionnaire at `/survey` and the two Next.js route handlers that relay it to the API server-side (§4.11).
+  - **Implemented:** the product database schema, the shoe catalogue and its validator, a spec-to-placement model, the catalogue loader, environment configuration, a source-agnostic corpus collector, survey capture (§4.7), preference→target (`q*`) derivation (§4.8), an HTTP API with `POST /survey`, `GET /shoes` and `GET /quadrant` (§4.9), and the frontend shell with its component and end-to-end test harness (§4.10).
+  - **Also implemented:** the questionnaire at `/survey`, the interactive quadrant at `/quadrant` (§4.12), and the three Next.js route handlers that relay them to the API server-side (§4.11).
   - **Not implemented:** `POST /recommend`, the recommendation scorer, NLP extraction and aggregation, evaluation, and the results page. These exist as documented stubs (§7). The pure `q*` function (§4.8) is called by survey capture (W4'-4a, part), but the questionnaire does not yet ask for the comfort-vs-performance goal (W6-4, §12).
 - **Current binding constraint:** **no corpus source is cleared.** YouTube collection failed a terms review, Reddit access is pending, and forum terms are unreviewed (`timeline.md` §10.2; D11 reopened). The planned first release (D7) is designed to work **without** a corpus, on hand- and spec-derived placements.
 
@@ -70,6 +70,7 @@ flowchart LR
     DEPS[api/deps.py<br/>body · connection · catalogue]
     RSURV[POST /survey]
     RSHOE[GET /shoes]
+    RQUAD[GET /quadrant]
   end
 
   CFG[config.py<br/>load_dotenv]
@@ -89,11 +90,14 @@ flowchart LR
   PREF -->|"q*"| STO
   MAIN --> RSURV
   MAIN --> RSHOE
+  MAIN --> RQUAD
   DEPS --> RSURV
   DEPS --> RSHOE
+  DEPS --> RQUAD
   CFG --> DEPS
   RSURV --> STO
   RSHOE --> SHOE
+  RQUAD --> SHOE
 
   RREC[POST /recommend<br/>W7-2]:::planned
   SCORE[recommend/<br/>fit · style · score · confidence]:::planned
@@ -101,13 +105,17 @@ flowchart LR
   EVAL[eval/<br/>gearlab_map · metrics · calibrate]:::planned
   SHELL[Next.js shell<br/>layout · home page]
   SURVEYUI[Questionnaire /survey<br/>form · anchor picker]
-  RELAY[Route handlers<br/>/api/shoes · /api/survey]
+  QUADUI[Quadrant /quadrant<br/>chart · table]
+  RELAY[Route handlers<br/>/api/shoes · /api/survey · /api/quadrant]
   WEB[Results page<br/>/results]:::planned
 
   SHELL --> SURVEYUI
+  SHELL --> QUADUI
   SURVEYUI -->|same origin| RELAY
+  QUADUI -->|same origin| RELAY
   RELAY -->|server-side| RSHOE
   RELAY -->|server-side| RSURV
+  RELAY -->|server-side| RQUAD
   WEB -.-> RREC -.-> SCORE -.-> SHOE
   SCORE -.-> REC
   LAND -.-> NLP -.-> SHOE
@@ -134,18 +142,19 @@ flowchart LR
 | `backend/app/scraping/collector.py` | Collector, sources, quota ledger, landing store | Implemented |
 | `backend/app/scraping/{sources,youtube,reddit,rate_limiter,compile,mentions}.py` | Originally planned per-module split for collection | Stub (§7) |
 | `backend/app/main.py`, `backend/app/api/deps.py` | FastAPI app, error handlers; body parsing, connection and catalogue dependencies | Implemented (§4.9) |
-| `backend/app/api/routes/survey.py`, `shoes.py` | `POST /survey`, `GET /shoes` | Implemented (§4.9) |
+| `backend/app/api/routes/survey.py`, `shoes.py`, `quadrant.py` | `POST /survey`, `GET /shoes`, `GET /quadrant` | Implemented (§4.9) |
 | `backend/app/api/routes/recommend.py` | `POST /recommend` | Stub (W7-2) |
 | `backend/app/survey/` | Survey capture: `schema.py` validation, `anchors.py` catalogue resolution, `store.py` persistence; `preferences.py` preference → `q*` derivation | Implemented (§4.7, §4.8) |
 | `backend/app/recommend/` | Fit, style, score, confidence | Stub |
 | `backend/app/nlp/` | Extraction, aggregation, lexicon, distillation | Stub |
 | `backend/app/eval/` | Calibration and metrics | Stub |
-| `backend/tests/` | Tests: 5 implemented files, 3 stubs | Partial |
+| `backend/tests/` | Tests: 6 implemented files, 3 stubs | Partial |
 | `backend/data/` | Local data: `gearlab/` placeholder; landing store (gitignored) | Runtime |
 | `frontend/` | The Next.js application, a self-contained npm project with its own manifest, lockfile, configuration and `.gitignore`. The repository root has no `package.json` | Implemented (§4.10) |
-| `frontend/src/app/layout.tsx`, `page.tsx`, `globals.css` | Next.js App Router root layout, home page, global stylesheet | Implemented (§4.10) |
+| `frontend/src/app/layout.tsx`, `page.tsx`, `globals.css` | Next.js App Router root layout, home page, global stylesheet with the quadrant page's colour tokens | Implemented (§4.10) |
 | `frontend/src/app/survey/`, `components/`, `lib/` | Questionnaire page, form and anchor picker, browser client, types, vocabularies, payload builder | Implemented (§4.11) |
-| `frontend/src/app/api/` | Route handlers `GET /api/shoes` and `POST /api/survey`, relaying to the API server-side | Implemented (§4.11) |
+| `frontend/src/app/api/` | Route handlers `GET /api/shoes`, `POST /api/survey` and `GET /api/quadrant`, relaying to the API server-side | Implemented (§4.11) |
+| `frontend/src/app/quadrant/`, `components/Quadrant{Chart,Table}.tsx`, `lib/quadrant-scale.ts`, `quadrant-labels.ts`, `format-axis-value.ts` | Quadrant page, interactive chart, table alternative and their shared helpers | Implemented (§4.12) |
 | `frontend/src/app/results/` | Ranked results page | Stub (W6-3) |
 | `frontend/src/app/page.test.tsx`, `frontend/e2e/` | Component test (Vitest) and end-to-end specs (Playwright) | Implemented (§4.10, §11) |
 | `frontend/package.json`, `frontend/package-lock.json` | npm manifest, scripts and committed lockfile | Implemented (§10.2) |
@@ -436,14 +445,15 @@ together: the discipline, terrain and level keys, and the output precision
 ### 4.9 HTTP API — `backend/app/main.py`, `backend/app/api/`
 
 A FastAPI service over the survey layer (§4.7) and the catalogue (W7-1). It
-has two endpoints; `POST /recommend` belongs to W7-2 and is not routed.
+has three endpoints; `POST /recommend` belongs to W7-2 and is not routed.
 
 | File | Role |
 |---|---|
-| `main.py` | `create_app()` factory and module-level `app`; mounts both routers; exception handlers |
+| `main.py` | `create_app()` factory and module-level `app`; mounts the three routers; exception handlers |
 | `api/deps.py` | `json_body` (request-body parsing), `database_url()`, `get_conn()` (one connection per request), `get_catalog()` |
 | `api/routes/survey.py` | `POST /survey` |
 | `api/routes/shoes.py` | `GET /shoes` |
+| `api/routes/quadrant.py` | `GET /quadrant` |
 
 - **Running:** `cd backend && uvicorn app.main:app`, which binds `127.0.0.1:8000`
   by default. `app` is a package rooted at `backend/`. The survey modules are
@@ -494,6 +504,26 @@ has two endpoints; `POST /recommend` belongs to W7-2 and is not routed.
   - **No `status` filter,** because anchor resolution matches shoes of any
     status.
   - **No pagination.** The catalogue has 30 rows today and ~100 under D12.
+- **`GET /quadrant`** (W6-2) returns every shoe that has a quadrant prior, as
+  `{id, brand, model, version, gender, x, y, prior_source, is_anchor, quadrant}`.
+  It has its own router, because `GET /shoes` is pinned to identity columns
+  for the anchor picker.
+  - **Filter and order:** `quadrant_x_prior IS NOT NULL`. The paired CHECKs
+    make `y` and `prior_source` all-or-nothing with `x`, so no further guard
+    is needed. The order is `lower(brand), lower(model), version, gender,
+    brand, model, id`, which is total.
+  - **`is_anchor`** is membership of `(brand, model, version)` in
+    `validate.ANCHORS`, the single source of the §3 anchors. Nothing is
+    stored: `seed.py` drops the YAML flag and there is no column. The key has
+    no gender, so a gendered twin of an anchor would be flagged too (§12).
+  - **`quadrant`** is `priors.quadrant(x, y)`. An on-axis prior is outside the
+    `Q1`–`Q4` literal, so response validation fails and the handler returns
+    the same masked 500 as any unexpected error. That is deliberate:
+    `validate.py` treats an on-axis prior as a catalogue bug.
+  - **Numbers:** `NUMERIC(4,3)` arrives as `Decimal` and is converted to
+    `float`, so the JSON carries numbers.
+  - **Parameters:** the SQL takes no bind parameters. The handler is a plain
+    `def`, as the other routes are.
 - **Connections:** `get_conn()` opens one psycopg connection per request, with
   `connect_timeout=5`. The catalogue reads and the insert share it, and it is
   always closed. There is no pool, so concurrent requests each hold their
@@ -517,7 +547,7 @@ has two endpoints; `POST /recommend` belongs to W7-2 and is not routed.
 
 ### 4.10 Frontend shell and test harness — `frontend/`
 
-The minimum the Next.js App Router needs in order to build, plus the two test layers that later frontend work builds on (W6-0). The questionnaire built on it is described in §4.11; the results page is still a placeholder (§7).
+The minimum the Next.js App Router needs in order to build, plus the two test layers that later frontend work builds on (W6-0). The questionnaire built on it is described in §4.11 and the quadrant page in §4.12; the results page is still a placeholder (§7).
 
 Everything in this section lives in `frontend/`, a self-contained npm project. Paths below are relative to it, and every `npm` command runs there.
 
@@ -525,16 +555,16 @@ Everything in this section lives in `frontend/`, a self-contained npm project. P
 | File | Role |
 |---|---|
 | `src/app/layout.tsx` | Root layout, a server component. Renders `<html lang="en">` and `<body>`, imports `globals.css`, and exports `metadata` (title `CruxUp` and a one-line description). |
-| `src/app/page.tsx` | Home page, a server component: an `<h1>`, one sentence describing the product, and a `next/link` to `/survey`. |
-| `src/app/globals.css` | `@import "tailwindcss";` only. No design tokens yet. |
+| `src/app/page.tsx` | Home page, a server component: an `<h1>`, one sentence describing the product, and two `next/link`s, to `/survey` and `/quadrant`. |
+| `src/app/globals.css` | `@import "tailwindcss";` and an `@theme` block of semantic colour tokens (`background`, `surface`, `foreground`, `muted`, `border`, `control-border`, `accent`, `accent-foreground`, `danger`, `focus-ring`) plus `radius-control`. Only the quadrant page (§4.12) uses them; the questionnaire keeps Tailwind palette classes. Light values only, because the app has no dark mode. |
 | `src/app/results/page.tsx` | Placeholder page that renders `null` (W6-3). |
 | `vitest.config.mts`, `vitest.setup.ts` | Component-test configuration, coverage thresholds and per-test setup. |
 | `playwright.config.ts`, `e2e/` | End-to-end configuration, specs, and the mock API with its catalogue fixture. |
 | `.env.example` | Documents `CRUXUP_API_URL`, the backend address the route handlers use (§4.11). |
 
 #### Build output
-- `next build` prerenders `/`, `/_not-found`, `/survey` and `/results` as static content.
-- No route handler, client component, middleware or server action exists yet. The data path in §8 (browser → route handler → FastAPI) is not yet built on the frontend side.
+- `next build` prerenders `/`, `/_not-found`, `/survey`, `/results` and `/quadrant` as static content (○). The route handlers `/api/survey`, `/api/shoes` and `/api/quadrant` are dynamic (ƒ).
+- Route handlers and client components exist (§4.11, §4.12). There is no middleware and no server action.
 - **No web fonts are loaded.** `next/font/google` would download fonts during `next build`, which would make the build depend on network access.
 - **Module alias:** `@/*` resolves to `src/*`, in both `tsconfig.json` and Vitest (`resolve.tsconfigPaths`). Nothing imports through it yet.
 
@@ -542,7 +572,7 @@ Everything in this section lives in `frontend/`, a self-contained npm project. P
 | Layer | Tool | Location | Runs against | Covers |
 |---|---|---|---|---|
 | Component | Vitest 4 + React Testing Library | `src/**/*.test.{ts,tsx}` | jsdom | One component's rendered, accessible structure. Synchronous server components render directly. |
-| End-to-end | Playwright, Chromium only | `e2e/*.spec.ts` | A real Next.js server on port 3100, relaying to a mock API on port 8100 | Routing, keyboard flows, what the relay forwards, request origins, and automated accessibility scans. |
+| End-to-end | Playwright, Chromium only | `e2e/*.spec.ts` | A real Next.js server on port 3100, relaying to a mock API on port 8100 | Routing, keyboard flows, what the relay forwards, request origins, the quadrant page's tooltip and phone-width behaviour, and automated accessibility scans. |
 
 - **Vitest:**
   - `vitest.setup.ts` registers the `@testing-library/jest-dom` matchers, stubs `scrollIntoView` (absent in jsdom), and unmounts after every test.
@@ -552,7 +582,7 @@ Everything in this section lives in `frontend/`, a self-contained npm project. P
   - Vitest includes only `src/`, and Playwright reads only `e2e/`, so neither runner picks up the other's files.
 - **Async server components** cannot be rendered by React Testing Library. They belong to the Playwright layer.
 - **Playwright servers:**
-  - `e2e/mock-api.mjs` is a dependency-free stand-in for the API on port 8100. It serves `GET /shoes` from `e2e/fixtures/shoes.json` (the 30 real catalogue rows, with synthetic ids) and records each `POST /survey` body for assertions. It validates nothing, with one exception: a size containing a comma gets the API's exact size-error message, so the plain-language translation is exercised end to end. The real API's rules are covered by its own tests (§11).
+  - `e2e/mock-api.mjs` is a dependency-free stand-in for the API on port 8100. It serves `GET /shoes` from `e2e/fixtures/shoes.json` (the 30 real catalogue rows, with synthetic ids), `GET /quadrant` from `e2e/fixtures/quadrant.json` (the seeded API's own `GET /quadrant` response, with the same synthetic ids), and records each `POST /survey` body for assertions. It validates nothing, with one exception: a size containing a comma gets the API's exact size-error message, so the plain-language translation is exercised end to end. The real API's rules are covered by its own tests (§11).
   - The Next.js server is started with `CRUXUP_API_URL` pointing at the mock.
   - Locally it starts `next dev`, and an already-running server on port 3100 is reused.
   - When `CI` is set, it starts `next start` against the build made by the preceding CI step, so CI exercises production output.
@@ -570,7 +600,7 @@ Everything in this section lives in `frontend/`, a self-contained npm project. P
 
 ### 4.11 Questionnaire and relay — `frontend/src/app/{survey,components,lib,api}/`
 
-The questionnaire that captures a survey (W6-1). The browser talks only to the app's own origin. Two route handlers relay its requests to the API server-side, so the API is never addressed by the client (§8). Paths below are relative to `frontend/src/app/`.
+The questionnaire that captures a survey (W6-1), and the relay that also serves the quadrant page (W6-2, §4.12). The browser talks only to the app's own origin. Three route handlers relay its requests to the API server-side, so the API is never addressed by the client (§8). Paths below are relative to `frontend/src/app/`.
 
 #### Structure
 | File | Role |
@@ -578,18 +608,20 @@ The questionnaire that captures a survey (W6-1). The browser talks only to the a
 | `survey/page.tsx` | Server component. Title "Questionnaire \| CruxUp", one `<h1>`, a short introduction, and `<SurveyForm />`. Prerendered as static content. |
 | `components/SurveyForm.tsx` | Client component. Loads the catalogue once, holds the answers, builds and submits the payload, and renders the outcome. |
 | `components/AnchorPicker.tsx` | Client component. Catalogue autocomplete for one anchor list. There are two instances: "Shoes that fit you well" (`known_good_shoes`) and "Shoes that fit you badly" (`known_bad_shoes`). |
-| `lib/types.ts` | Types mirroring the API: `Shoe`, `Gender`, the vocabulary unions, `AnchorEntry`, `SurveyPayload` and the response bodies. |
+| `lib/types.ts` | Types mirroring the API: `Shoe`, `Gender`, the vocabulary unions, `AnchorEntry`, `SurveyPayload`, `QuadrantShoe` with `PriorSource` and `Quadrant`, and the response bodies. `backend/tests/test_frontend_contract.py` parses the unions and interface keys and compares them with `schema.py`, `anchors.py`, `ShoeOut` and `QuadrantShoeOut`. |
 | `lib/vocab.ts` | Option values and labels for every select, and the street-size and budget bounds. |
 | `lib/payload.ts` | Pure function from form state to request body. |
 | `lib/errors.ts` | Turns the API's 422 messages into plain-language text, linked to the field they concern where recognised. |
-| `lib/shoe.ts` | The display name of a shoe ("Scarpa Instinct VSR (unisex)"), shared by the picker and the error text. |
-| `lib/api.ts` | Browser client. It calls only `/api/shoes` and `/api/survey`, and checks the shape of every catalogue row it receives. |
-| `api/_lib/backend.ts` | Server-only relay helper: backend address, capped body reading, and the upstream request. The `_lib` prefix keeps it out of routing. |
+| `lib/shoe.ts` | The display name of a shoe ("Scarpa Instinct VSR (unisex)"), shared by the picker, the error text and the quadrant chart and table. |
+| `lib/api.ts` | Browser client. It calls only `/api/shoes`, `/api/survey` and `/api/quadrant`, and checks the shape of every catalogue and quadrant row it receives. |
+| `api/_lib/backend.ts` | Server-only relay helper: backend address, the path allow-list, capped body reading, the upstream request and the status allow-list. The `_lib` prefix keeps it out of routing. |
 | `api/shoes/route.ts` | `GET /api/shoes` → the API's `GET /shoes`. |
 | `api/survey/route.ts` | `POST /api/survey` → the API's `POST /survey`. |
+| `api/quadrant/route.ts` | `GET /api/quadrant` → the API's `GET /quadrant`. |
 
 #### Relay
-- **Scope:** exactly two handlers, one method each, with no catch-all proxy. `/api/docs`, `/api/openapi.json` and `/api/redoc` therefore return 404, and other methods return 405.
+- **Scope:** exactly three handlers, one method each, with no catch-all proxy. `/api/docs`, `/api/openapi.json` and `/api/redoc` therefore return 404, and other methods return 405.
+- **Path allow-list:** `callBackend` throws, before any request is made, for a path other than `/survey`, `/shoes` and `/quadrant`. The handler turns the throw into its 502. A FastAPI route added later stays unreachable from the browser until it is listed here.
 - **Backend address:** the server-only variable `CRUXUP_API_URL`, read on every request; default `http://127.0.0.1:8000`; trailing slashes removed. It is not a `NEXT_PUBLIC_` variable, so it never reaches the browser bundle.
 - **Upstream requests are built fresh:** only `accept: application/json` (plus `content-type: application/json` on `POST`). No incoming header or cookie is forwarded. Requests use `cache: "no-store"`, a 10-second timeout, and `redirect: "error"`.
 - **Request body:**
@@ -599,9 +631,9 @@ The questionnaire that captures a survey (W6-1). The browser talks only to the a
   - The body is read as a stream with a running byte count, and stops at 65,536 bytes (`MAX_SURVEY_BODY_BYTES`) with a 413 `{"errors":["request body exceeds 65536 bytes"]}`. An oversized `content-length` is refused before reading.
   - The body is forwarded unparsed: every validation rule stays in the Python layer (§4.7, §4.9).
 - **Responses:**
-  - Upstream status and body pass through unchanged (201, 422, 503, 500).
-  - A failed upstream call (refused, timed out, or redirected) becomes a 502, with `{"errors":["The survey service is unavailable. Please try again later."]}` for the survey and `{"detail":"catalogue service unavailable"}` for the catalogue.
-  - Neither handler sets route-segment config. Since Next.js 15, `GET` route handlers are dynamic by default, and `POST` is never cached; the build lists both as dynamic. Avoiding the `dynamic` export also keeps the handlers valid if Cache Components is ever enabled, since that option removes it.
+  - **Status allow-list.** `relay(upstream, expected, unavailable)` passes the upstream status and body through unchanged only for the statuses the route expects: 201 and 422 for `/survey` (the token, and the API's validation list, which the form interprets); 200 for `/shoes` and `/quadrant`.
+  - **Masking.** Any other upstream status (the API's 500 and 503, an unexpected 4xx or 2xx) becomes a 502 with a fixed body, and the upstream body is discarded unread. So does a failed upstream call (refused, timed out, redirected, or a path refused by the allow-list). The bodies are `{"errors":["The survey service is unavailable. Please try again later."]}`, `{"errors":["The catalogue service is unavailable. Please try again later."]}` and `{"errors":["The quadrant service is unavailable. Please try again later."]}`. Every error from the relay therefore has the API's 422 envelope, `{"errors": [...]}`, and no API error text reaches the browser (`timeline.md` §13, decided 2026-11-05).
+  - No handler sets route-segment config. Since Next.js 15, `GET` route handlers are dynamic by default, and `POST` is never cached; the build lists all three as dynamic. Avoiding the `dynamic` export also keeps the handlers valid if Cache Components is ever enabled, since that option removes it.
 
 #### Form
 - **Groups:** "Your feet" (width, instep, toe shape, arch, heel, street size), "How you climb" (discipline, terrain, level), "Budget" (cap in US dollars), and "Shoes you know" (the two pickers).
@@ -646,6 +678,32 @@ The questionnaire that captures a survey (W6-1). The browser talks only to the a
   - The size field's visible label is "Size (optional)", and its accessible name continues "for <shoe>".
   - Its hint states the accepted format: letters, numbers, spaces and `. / + -` (the fractions ½ ⅓ ⅔ ¼ ¾ are also accepted).
   - Its length limit (64) and accepted punctuation are constants tested against `anchors.py`.
+
+### 4.12 Quadrant chart and table — `frontend/src/app/{quadrant,components,lib}/`
+
+The §3 quadrant as a page (W6-2). The page is static; the data is fetched in the browser from `/api/quadrant` (§4.11). The chart and the table render the same list, so the two views cannot disagree. Paths below are relative to `frontend/src/app/`.
+
+| File | Role |
+|---|---|
+| `quadrant/page.tsx` | Server component. Title "Shoe quadrant \| CruxUp", an `<h1>`, an intro saying every position is an estimate, and `QuadrantView`. It names no source. |
+| `quadrant/QuadrantView.tsx` | Client component. Calls `fetchQuadrant()` on mount with an `AbortController`, as `SurveyForm` does for the catalogue, so an unmount or retry is never shown as an error. One always-mounted status region for loading; on failure, an alert with a fixed plain-language message and a "Try again" button. The chart and the table each sit in a section headed by an `h2`. |
+| `components/QuadrantChart.tsx` | Hand-built SVG chart: frame, labels, marks, keyboard model, tooltip, accessible names and legend. No chart library. |
+| `components/QuadrantTable.tsx` | The non-visual alternative (below). |
+| `lib/quadrant-scale.ts` | `toChartPoint()`: maps `[-1, 1]²` onto a 480-unit square with 72-unit padding, and inverts y. |
+| `lib/quadrant-labels.ts` | `QUADRANT_LABEL`: the §3 quadrant names, shared by chart and table. |
+| `lib/format-axis-value.ts` | `formatAxisValue()`: two decimals with a true minus sign, never `−0.00`. |
+
+- **Client.** `fetchQuadrant(signal?)` in `lib/api.ts` is shaped like `fetchShoes`: a non-2xx answer, a body that is not a list, or any malformed row throws. Each row must pass `isShoe` and have `x` and `y` numbers in [−1, 1], a known `prior_source` and `quadrant`, and a boolean `is_anchor`.
+- **Axes and orientation.** x runs from comfort (−1) to performance (+1). y runs from stiff (−1) to soft (+1), with soft drawn at the top, so Q1 (performance and stiff) sits bottom-right. This follows the §3 axes, not mathematical quadrant numbering, and the scale tests pin it.
+- **Encodings.** Provenance is shown by shape and fill, never colour alone: hand-placed is a filled circle, spec-derived a hollow one, and corpus a filled square. The corpus square is reserved, since no corpus rows exist. Marks have radius 5 units, or 7 for an anchor. Only the five §3 anchors carry a direct label. The legend lists only the encodings on the page.
+- **Quadrant labels** sit outside the frame, so no point or anchor label can cover one. Each corner label is split over two lines.
+- **Text size.** The viewBox is 480 units. Axis, quadrant and anchor text is 18 units, which at the 328 px phone content width (360 px less two 16 px gutters) is about 12.3 px. The figure is capped at `max-w-xl`.
+- **Hit areas.** Each point has a transparent circle of radius 20 units, about 27 px across at 328 px, which clears the 24 px target size. Hit areas overlap in dense clusters, so every mark is drawn again in an `aria-hidden` layer above all hit areas, with its own shoe's hover handlers: a pointer on a visible mark always opens that shoe's tooltip. The keyboard reaches every shoe regardless.
+- **Keyboard model.** Points are ordered from comfort to performance (by x, then soft before stiff, then name). A roving tabindex keeps one point in the Tab order, the last one focused. Right and Down step to the next point, Left and Up to the previous, Home and End jump to the ends, and nothing wraps. Each point is `role="img"` with `aria-roledescription="shoe"`. A visually hidden instruction on the group describes the order and the Escape key.
+- **Accessible names and tooltip.** Both come from one helper, so they say the same thing, for example: "Scarpa Drago (unisex). Comfort–performance 0.80, leaning performance. Stiff–soft 0.85, leaning soft. Hand-placed. Section 3 reference shoe." A value within 0.05 of zero reads "neutral". Shoe names come from `lib/shoe.ts`. The tooltip appears on hover and on focus; Escape, blur, a pointer-down outside the chart, or the pointer leaving both the point and the tooltip hides it. It is `aria-hidden`, since it repeats the accessible name, but it still takes the pointer: it stays open while hovered, and a 300 ms hide delay lets the pointer cross the gap from the point (WCAG 1.4.13, hoverable and dismissible).
+- **Not built:** a user-target crosshair and highlighted points. The results page (W6-3) adds them when it uses the chart.
+- **Table alternative** (`QuadrantTable`). Visible rather than sr-only, because hover cannot reach overlapping points and touch targets are small. It has one `tbody` per quadrant, headed by a row header, with columns for shoe, comfort–performance, stiff–soft, placement and section-3 reference. An empty quadrant reads "No shoes". Each shoe cell carries a visually hidden quadrant cue, because screen-reader support for row-group headers is uneven. The table sits in a keyboard-reachable region that scrolls horizontally, so the page does not scroll sideways at 375 px.
+- **Phone width.** The page pads `p-4` below `sm` and `p-8` above. `e2e/quadrant.spec.ts` asserts no sideways scroll at 375 px.
 
 ---
 
@@ -856,7 +914,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - **Privacy by construction** (D4). No images, no biometrics, no personal identifiers; author identity exists only as a keyed pseudonym.
 - **`q*` has a single author** (decided 2026-10-02, `timeline.md` v3.3). The survey layer computes the user's target when a survey is saved and stores it with the raw answers and a mapping version. Clients cannot supply it, and the scorer only reads it. One author means a survey's target never shifts silently when the mapping constants change, and a stored target can always be audited against its inputs. *(Partly built: capture derives `q*` and refuses client targets (W4'-4a, part); the raw answer and mapping version wait for the rest of W4'-4a and W4'-4b.)*
 - **The first results are a style match** (decided 2026-10-02). The v0 scorer ranks by quadrant proximity only, and labels fit and budget as not assessed rather than inventing them. Results are written once, so later feedback (§9.4) stays tied to what each user actually saw. *(Planned: W3-1a, W7-2, W6-3.)*
-- **The browser never reaches the service layer directly** (decided 2026-09-21, `timeline.md` §6). The data path is browser → Next.js route handler → FastAPI on localhost → PostgreSQL. Both ends are implemented: FastAPI without CORS middleware (§4.9), and two Next.js route handlers that relay server-side (§4.11). The frontend talks only to its own origin, so there is no CORS surface and the backend is not addressable from the client. The alternative — querying PostgreSQL from TypeScript — was rejected because it would duplicate the anchor resolution, allow-lists and domain guards that already exist and are tested in Python, leaving two validators to keep in step.
+- **The browser never reaches the service layer directly** (decided 2026-09-21, `timeline.md` §6). The data path is browser → Next.js route handler → FastAPI on localhost → PostgreSQL. Both ends are implemented: FastAPI without CORS middleware (§4.9), and three Next.js route handlers that relay server-side (§4.11). The frontend talks only to its own origin, so there is no CORS surface and the backend is not addressable from the client. The alternative — querying PostgreSQL from TypeScript — was rejected because it would duplicate the anchor resolution, allow-lists and domain guards that already exist and are tested in Python, leaving two validators to keep in step.
 
 ---
 
@@ -870,7 +928,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   - **Inputs:** `POST /survey` takes only a body, and every rule applied to it
     is the survey layer's. A caller cannot supply `survey_token` or `shoe_id`
     (§4.7).
-  - **Queries:** all SQL is parameterised. `GET /shoes` runs a fixed query.
+  - **Queries:** all SQL is parameterised. `GET /shoes` and `GET /quadrant` run fixed queries.
   - **Responses:** 201 returns only the token. 5xx bodies are fixed strings.
     The log never records a payload, DSN or exception message.
   - **Error text quotes input.** 422 messages quote submitted values such as
@@ -878,14 +936,16 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
     markup.
 - **Exposure:** the API binds to localhost and has no authentication, because
   the survey is anonymous by design. The Next.js route handlers (§4.11) are the
-  only intended client. They forward only `/survey` and `/shoes`, require a JSON
-  content type on survey submissions (415 otherwise), cap request bodies at
-  64 KiB, never forward client headers or cookies, and do not follow redirects.
+  only intended client. They forward only `/survey`, `/shoes` and `/quadrant` (an allow-list in
+  `callBackend`), require a JSON content type on survey submissions (415
+  otherwise), cap request bodies at 64 KiB, never forward client headers or
+  cookies, do not follow redirects, and relay only expected statuses, masking
+  every other one as a fixed 502.
 - **Before any public deployment** (identified in review, not built):
   - rate limiting at the edge;
   - an `Origin` / `Sec-Fetch-Site` check on `POST /api/survey`;
   - proxy request and body timeouts;
-  - a size cap and status allow-list on relayed API responses;
+  - a size cap on relayed API responses (the status allow-list is built, §4.11);
   - security headers (`X-Content-Type-Options`, `Referrer-Policy`, `frame-ancestors` / `X-Frame-Options`) and `poweredByHeader: false` in `next.config.ts`;
   - keeping the API on a private address, so its `/docs` stays unreachable.
 - **Frontend rendering:** API error messages are shown only as text, never as
@@ -962,8 +1022,8 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 ## 11. Testing architecture
 
 - **Runners:** `pytest` for the backend, run from the repository root: `python3 -m pytest backend/tests/ -q`. Vitest and Playwright for the frontend (§4.10), run from `frontend/`: `npm test` and `npm run test:e2e`.
-- **Frontend tests** (paths under `frontend/`): 127 Vitest tests in 9 files and 13 Playwright tests in 2 files.
-  - **`src/app/page.test.tsx`** — 2 Vitest tests. The home page renders a level-1 heading `CruxUp` and a link whose `href` is `/survey`. Both use role-based queries.
+- **Frontend tests** (paths under `frontend/`): 254 Vitest tests in 15 files and 24 Playwright tests in 3 files.
+  - **`src/app/page.test.tsx`** — 3 Vitest tests. The home page renders a level-1 heading `CruxUp`, a link whose `href` is `/survey`, and a link whose `href` is `/quadrant`. All use role-based queries.
   - **`src/app/survey/page.test.tsx`** — 1 test: the page's metadata title, and that it renders a single `<h1>`.
   - **`src/app/lib/payload.test.ts`** — 8 tests (the eighth checks that chosen shoes keep their order, which the error links rely on):
     - nothing answered gives `{}`;
@@ -978,11 +1038,14 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
     - It reads `backend/app/survey/anchors.py` and compares the size field's accepted punctuation, its fractions, and `ANCHOR_SIZE_MAX_LEN`.
     - It fails if parsing finds nothing, so it cannot pass vacuously.
   - **`src/app/lib/errors.test.ts`** — 5 tests: both shoe-size error shapes are translated and tied to the right shoe; unrecognised messages fall back to the generic text, with the original kept for "Technical details".
-  - **`src/app/lib/api.test.ts`** — 8 tests: the catalogue loader accepts well-formed rows, rejects six malformed shapes (not an array, a non-string `id`, a missing `brand`, a `null` version, an unknown gender, a `null` row), and passes its abort signal to `fetch`.
-  - **`src/app/api/routes.test.ts`** — 31 tests, run in Node, of the relay:
+  - **`src/app/lib/api.test.ts`** — 25 tests: the catalogue loader accepts well-formed rows, rejects six malformed shapes (not an array, a non-string `id`, a missing `brand`, a `null` version, an unknown gender, a `null` row), and passes its abort signal to `fetch`. The quadrant loader requests `/api/quadrant`, accepts the inclusive bounds −1 and 1, rejects ten malformed shapes (among them out-of-range or string coordinates, an unknown `prior_source`, a string `is_anchor` and the API's `ON-AXIS`), rejects a non-2xx answer, and passes its abort signal.
+  - **`src/app/lib/quadrant-scale.test.ts`**, **`format-axis-value.test.ts`** — 4 and 3 tests: the corners and centre of the plot, soft drawn above stiff; two decimals, a true minus sign, and no `−0.00`.
+  - **`src/app/api/routes.test.ts`** — 48 tests, run in Node, of the relay:
+    - exactly GET on `/api/shoes` and `/api/quadrant` and POST on `/api/survey`;
+    - `callBackend` refuses `/docs`, `/openapi.json`, `/recommend`, a trailing slash, a query string and a protocol-relative path without calling `fetch`;
     - non-JSON or missing content types get 415 without contacting the API, and `application/json; charset=utf-8` and `+json` types are forwarded;
     - the backend address is read on every call, with the default when unset;
-    - status and body pass through;
+    - expected statuses pass through with their body (201 and 422 for the survey, 200 for the catalogue and the quadrant); every other status (500, 503, an unexpected 4xx or 2xx) becomes the route's fixed 502 envelope;
     - incoming `cookie` and `authorization` headers are not forwarded;
     - a 413 is returned without contacting the API, both for a false `content-length` and for an oversized one;
     - exactly 65,536 bytes of two-byte characters is forwarded, and one more character is refused;
@@ -1010,6 +1073,9 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
     - the button reads "Sending…" and a second submit is ignored while pending, then the button is re-enabled;
     - the catalogue request is aborted on unmount;
     - general and catalogue failures, and "Try again", are handled.
+  - **`src/app/components/QuadrantChart.test.tsx`** — 61 tests: one point per shoe; quadrant and axis labels placed outside the frame and anchored inside the viewBox; anchors labelled and named as section-3 reference shoes; spec points hollow and hand points filled; provenance and "neutral" in accessible names; the hit area; the legend lists only encodings present; the empty state; the roving tabindex, arrow, Home and End keys; and the tooltip's show and hide paths (focus, hover, mouseleave and pointerleave after the hide delay, outside pointer-down, blur, Escape), that it stays open while the pointer is over it and hides once the pointer leaves it, and its `aria-hidden`.
+  - **`src/app/components/QuadrantTable.test.tsx`** — 11 tests: caption, scroll region, one row header per quadrant, Drago in the Q4 group with its sr-only quadrant cue, two-decimal and true-minus values, the anchor flag, and "No shoes".
+  - **`src/app/quadrant/QuadrantView.test.tsx`** — 12 tests: the loading status stays mounted and empties; chart and table render after a 200 under `h2`-labelled sections; a 502 or a malformed body shows the plain-language alert; "Try again" recovers; an unmount before the answer logs nothing. **`quadrant/page.test.tsx`** — 1 test: the `<h1>`.
   - **`e2e/home.spec.ts`** — 2 Playwright tests:
     - the home page has the title `CruxUp`, and its link navigates to `/survey`;
     - `GET /survey` returns 200 and shows the questionnaire heading. The URL assertion alone would also pass on a 404, which keeps the same URL.
@@ -1020,6 +1086,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
     - every browser request goes to the app's own origin;
     - an axe WCAG 2 A/AA scan finds no violations in six states (initial; list open; shoe selected; 422 shown; "Technical details" open; confirmation);
     - `/api/docs`, `/api/openapi.json` and `/api/redoc` return 404, and `GET /api/survey` is refused.
+  - **`e2e/quadrant.spec.ts`** — 11 Playwright tests, against the mock API's `GET /quadrant`: the home link lands on `/quadrant`; the Q4 label is drawn and the table lists Scarpa Drago under Q4; Tab then ArrowRight shows the second shoe's tooltip; hover shows a tooltip, stays open while the pointer is over it, and Escape hides it; hovering the visible edge of Defy's mark opens Defy's tooltip although Elektra shares its coordinates; no sideways scroll at 375 px; every browser request goes to the app's own origin; and an axe WCAG 2 A/AA scan with a tooltip shown finds no violations.
 - **Isolation:** no network and no database. External APIs are replaced by an injected transport; SQLite state uses temporary paths; tests that check availability explicitly remove environment credentials; an autouse fixture supplies a synthetic author key.
 - **`backend/tests/test_collector.py`** — 25 tests:
   - privacy: display names never stored; hashes keyed; key read at hash time; weak and compromised keys rejected
@@ -1061,10 +1128,10 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
     over-large integer `goal`; read-only tables; the import-time invariant check
     fails for bad constants, including under `python -O`
   - golden values with hand-checked arithmetic
-- **`backend/tests/test_api.py`** — 57 tests (30 functions), through FastAPI's
+- **`backend/tests/test_api.py`** — 89 tests, through FastAPI's
   `TestClient`. Hermetic tests swap `get_conn` / `get_catalog` for fakes or a
   static catalogue; some keep the real `get_conn` and stub only `psycopg.connect`.
-  - wiring: both routes registered, read from the OpenAPI schema; no
+  - wiring: all three routes registered, read from the OpenAPI schema; no
     `/recommend` (schema check and a live 404); no CORS middleware; sync
     handlers
   - no validation of its own: a multi-error payload, and a 12-case parity
@@ -1083,11 +1150,26 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   - `GET /shoes`: exact keys, `''` versions, string ids, the three shared
     `(brand, model)` pairs, and a round trip — every item resolves back to
     its own `id`
-- **Database-backed tests are opt-in by reachability.** Fourteen tests (ten in
-  `test_survey.py`, four in `test_api.py`) use a live PostgreSQL when one is
+  - `GET /quadrant`: exactly ten keys; `Decimal` priors become floats; each
+    quadrant from the sign of x and y; the anchor flag for both Instinct and
+    both Solution versions; the `prior_source` literal equals
+    `priors.PriorSource`; an on-axis x or y is the masked 500; an empty table;
+    no bind parameters; the 503 body never leaks the exception; the connection
+    is closed. With a seeded database: the length equals the live count of
+    placed shoes, exactly five anchors, each in its §3 quadrant.
+- **`backend/tests/test_frontend_contract.py`** — 19 tests. It parses
+  `frontend/src/app/lib/types.ts` and asserts that each enum union equals
+  `schema.ENUMS` / `PY_ONLY_ENUMS`, `Gender` equals `anchors.GENDERS`,
+  `SurveyPayload`'s keys equal `schema.ALLOWED_KEYS` less the two derived
+  targets, `AnchorEntry`'s keys equal `ANCHOR_ALLOWED_KEYS`, `Shoe` and
+  `QuadrantShoe` match `ShoeOut` and `QuadrantShoeOut`, and `PriorSource` and
+  `Quadrant` match the API's literals. Three self-tests keep the parser from
+  passing vacuously.
+- **Database-backed tests are opt-in by reachability.** Eighteen tests (ten in
+  `test_survey.py`, eight in `test_api.py`) use a live PostgreSQL when one is
   available, and skip cleanly when it is not, so the default suite stays
   hermetic.
-  - **Every one but one** rolls back and asserts it left `user_survey` empty.
+  - **Every one that writes but one** rolls back and asserts it left `user_survey` empty. The three `GET /quadrant` tests only read.
   - **The exception** is `test_api.py`'s persistence test. Persistence can only
     be shown by a real commit, observed from a second connection, so that test
     commits and then deletes its row unconditionally.
@@ -1102,7 +1184,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   - There is no deploy stage, because there is no hosting target.
   - The migration apply/reverse check is automated here; `SETUP.md` §3 remains the manual procedure for a local database.
 - **Stub test files:** `test_fit.py`, `test_aggregate.py`, `test_calibration.py`.
-- **Total:** backend 1,610 tests with a database reachable, and 1,596 passed plus 14 skipped without one. The same counts hold on Python 3.9 (FastAPI 0.128, Starlette 0.49) and 3.14 (FastAPI 0.141, Starlette 1.7). Frontend: 127 Vitest tests and 13 Playwright tests.
+- **Total:** backend 1,731 tests with a database reachable, and 1,713 passed plus 18 skipped without one (measured 2026-11-06 on Python 3.12; the 3.9 and 3.14 runs predate W6-2). Frontend: 254 Vitest tests and 24 Playwright tests.
 
 ---
 
@@ -1155,8 +1237,8 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - **Service-edge controls live in the Next.js route handlers.** The API has no
   request-size limit, leaves `/docs` and `/openapi.json` enabled, and has no
   authentication (§4.9, §9.1). This is safe only while it is reachable solely
-  through the relay. The relay forwards only `/survey` and `/shoes`, requires
-  JSON, and caps bodies at 64 KiB (§4.11), but **neither layer limits request
+  through the relay. The relay forwards only `/survey`, `/shoes` and `/quadrant`,
+  requires JSON, and caps bodies at 64 KiB (§4.11), but **neither layer limits request
   rate**, so nothing stops repeated anonymous submissions. The other controls
   still needed before a public deployment are listed in §9.1.
 - **No connection pool.** Each request opens and closes its own connection. At
@@ -1167,14 +1249,25 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - **Legacy dead code:** `backend/scraping/` (`compile.py`, `sources.py`, `NLP_training_data.txt`) and `backend/NLP/` (`processing/NLP.py`, `training/trainer.py`) are empty files from an earlier layout, duplicated by `backend/app/`.
 - **Module split mismatch:** collection sources live in `collector.py`, but stub modules for a per-source split remain under `backend/app/scraping/`.
 - **Migration edited in place:** `0001_init.sql` was changed after first use to add `prior_source`. That is acceptable before any deployment; later changes should be additive migrations.
+- **`is_anchor` has no gender in its key.** `GET /quadrant` matches
+  `(brand, model, version)` against `validate.ANCHORS`, so a future gendered
+  twin of an anchor would be flagged as one too. No such row exists today.
+- **Quadrant chart limits.** Overlapping points: hover reaches only the topmost
+  one; the keyboard and the table reach every shoe, and points are not jittered,
+  by design. Point marks are smaller than 44 px touch targets; their hit areas
+  are ≥ 24 px, and the table is the touch path.
+- **Colour tokens are light-only and partial.** `globals.css` carries only the
+  tokens the quadrant page uses, without dark-mode values; the questionnaire
+  still uses Tailwind palette classes. A dark mode needs both to move to tokens
+  together.
 - **There is no results page.** `/results` renders nothing, and the questionnaire neither shows nor keeps the survey token, so nothing yet links a submission to its results. Tracked as **W6-3**.
 - **Error translation depends on the API's wording.**
   - The API returns 422 errors as developer-phrased strings, e.g. `known_good_shoes[0]: 'size' contains [','] -- …`.
   - The questionnaire translates the two shoe-size shapes into plain language tied to their field (§4.11) by matching that text. Every other message falls back to generic wording, with the original under "Technical details".
   - This is enough while the form's own constraints let only size errors through. But a reworded API message silently loses its translation, and a new validation rule would surface only as the generic text.
   - Structured errors from the API (a field path and a code per error) would remove the text matching.
-- **No manual screen-reader verification.** The questionnaire was checked with axe in six states and against the WAI-ARIA combobox pattern by review, but not with NVDA, JAWS, VoiceOver or TalkBack. The live-region announcements and the alert that also takes focus may sound different across screen readers. The forced-colours outline on the active option has been checked by class name only, not rendered.
-- **End-to-end tests run against a mock API.** `e2e/mock-api.mjs` validates nothing, and `e2e/fixtures/shoes.json` is a snapshot of the catalogue that is not regenerated when the catalogue changes. A change to the real API's contract therefore would not fail the Playwright suite. The relay's behaviour against the real API is covered by the backend's own tests plus a manual end-to-end check; CI does not run one.
+- **No manual screen-reader verification.** The quadrant chart's roving tabindex and accessible names were checked with axe and unit tests only. The questionnaire was checked with axe in six states and against the WAI-ARIA combobox pattern by review, but not with NVDA, JAWS, VoiceOver or TalkBack. The live-region announcements and the alert that also takes focus may sound different across screen readers. The forced-colours outline on the active option has been checked by class name only, not rendered.
+- **End-to-end tests run against a mock API.** `e2e/mock-api.mjs` validates nothing, and `e2e/fixtures/shoes.json` and `quadrant.json` are snapshots of the catalogue that are not regenerated when the catalogue changes. A change to the real API's contract therefore would not fail the Playwright suite. The relay's behaviour against the real API is covered by the backend's own tests plus a manual end-to-end check; CI does not run one.
 - **End-to-end tests use different servers locally and in CI.** Local runs use `next dev` and CI uses `next start`, so behaviour that differs between development and production builds (for example prefetching, or dev-only warnings) can pass in one and fail in the other. CI is the authoritative run. To reproduce it locally, run `npm run build` and then `CI=1 npm run test:e2e` in `frontend/`.
 - **A coding-agent environment makes `next dev` write files.** When Next.js 16.3 detects that it is running inside a coding agent (through environment variables such as `AI_AGENT` or `CLAUDECODE`), `next dev` creates `AGENTS.md` and `CLAUDE.md` in its project directory, `frontend/`. If a `CLAUDE.md` already exists there, it inserts its own rules block into it. Neither file is part of the repository, and `next start` and `next build` do not do this.
 - **Documentation stubs:** `docs/eval-methodology.md` and `docs/lexicon-guide.md` are placeholders, and `README.md` is a single line.
@@ -1187,16 +1280,18 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 These commands re-check the mechanically verifiable claims in this document:
 
 ```bash
-python3 -m pytest backend/tests/ -q                              # 1687 passed with a database reachable
+python3 -m pytest backend/tests/ -q                              # 1731 passed with a database reachable
 python3 -m pytest backend/tests/test_collector.py -q             # 25 passed
 python3 -m pytest backend/tests/test_priors.py -q                # 86 passed
 python3 -m pytest backend/tests/test_survey.py -q                # 168 passed, 10 skipped without a database (178 with one)
 python3 -m pytest backend/tests/test_preferences.py -q           # 1334 passed
-python3 -m pytest backend/tests/test_api.py -q                   # 59 passed, 5 skipped without a database (64 with one)
+python3 -m pytest backend/tests/test_api.py -q                   # 81 passed, 8 skipped without a database (89 with one)
+python3 -m pytest backend/tests/test_frontend_contract.py -q     # 19 passed
 DATABASE_URL=postgresql://localhost:1/nope \
-  python3 -m pytest backend/tests/ -q                            # 1672 passed, 15 skipped — the suite is hermetic
+  python3 -m pytest backend/tests/ -q                            # 1713 passed, 18 skipped — the suite is hermetic
 (cd backend && uvicorn app.main:app --port 8000) &                # then, in another shell:
 curl -s localhost:8000/shoes | python3 -c "import json,sys; print(sorted(json.load(sys.stdin)[0]))"   # ['brand', 'gender', 'id', 'model', 'version']
+curl -s localhost:8000/quadrant | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d), sum(r['is_anchor'] for r in d))"   # 30 5 (seeded catalogue)
 curl -s -H 'content-type: application/json' -d '{"email":"x"}' localhost:8000/survey   # 422 {"errors": ["unknown key(s) ['email']: ..."]}
 python3 backend/app/catalog/validate.py | tail -1                # catalogue valid
 python3 backend/app/catalog/validate.py --require-msrp; echo $?  # exit 1: 7 of 30 shoes have null msrp_usd
@@ -1208,9 +1303,9 @@ cd frontend                                                      # every npm com
 npm ci                                                           # installs exactly what package-lock.json records
 npm run lint                                                     # no errors, no warnings
 npm run typecheck                                                # clean
-npm run test:coverage                                            # 127 passed in 9 files; coverage thresholds met
-npm run build                                                    # static: /, /_not-found, /results, /survey; dynamic: /api/shoes, /api/survey
-npm run test:e2e                                                 # 13 passed (local, next dev + mock API on :8100)
-CI=1 npm run test:e2e                                            # 13 passed (production build, next start) — run after npm run build
+npm run test:coverage                                            # 254 passed in 15 files; coverage thresholds met
+npm run build                                                    # static: /, /_not-found, /quadrant, /results, /survey; dynamic: /api/quadrant, /api/shoes, /api/survey
+npm run test:e2e                                                 # 22 passed (local, next dev + mock API on :8100)
+CI=1 npm run test:e2e                                            # 22 passed (production build, next start) — run after npm run build
 npm audit                                                        # found 0 vulnerabilities
 ```

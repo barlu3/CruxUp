@@ -1,14 +1,17 @@
 // Browser client. Calls only this app's own route handlers; the browser never
 // talks to the FastAPI backend directly.
 
-import type { Shoe, SurveyPayload } from "./types";
+import type { Gender, PriorSource, Quadrant, QuadrantShoe, Shoe, SurveyPayload } from "./types";
 
 export type SubmitResult =
   | { kind: "created" }
   | { kind: "invalid"; errors: string[] }
   | { kind: "failed" };
 
-const GENDERS: readonly unknown[] = ["mens", "womens", "unisex"];
+// Records, not arrays, so tsc rejects a set that misses or invents a member of its union.
+const GENDER_SET: Record<Gender, true> = { mens: true, womens: true, unisex: true };
+const PRIOR_SOURCE_SET: Record<PriorSource, true> = { corpus: true, hand: true, spec: true };
+const QUADRANT_SET: Record<Quadrant, true> = { Q1: true, Q2: true, Q3: true, Q4: true };
 
 function isShoe(v: unknown): v is Shoe {
   if (typeof v !== "object" || v === null) return false;
@@ -18,7 +21,8 @@ function isShoe(v: unknown): v is Shoe {
     typeof r.brand === "string" &&
     typeof r.model === "string" &&
     typeof r.version === "string" &&
-    GENDERS.includes(r.gender)
+    typeof r.gender === "string" &&
+    Object.hasOwn(GENDER_SET, r.gender)
   );
 }
 
@@ -28,6 +32,34 @@ export async function fetchShoes(signal?: AbortSignal): Promise<Shoe[]> {
   const body: unknown = await res.json();
   if (!Array.isArray(body)) throw new Error("catalogue response is not a list");
   if (!body.every(isShoe)) throw new Error("catalogue response has a malformed row");
+  return body;
+}
+
+/** The section-3 plane is [-1, 1] on both axes. */
+function isAxisValue(v: unknown): boolean {
+  return typeof v === "number" && v >= -1 && v <= 1;
+}
+
+function isQuadrantShoe(v: unknown): v is QuadrantShoe {
+  if (!isShoe(v)) return false;
+  const r = v as unknown as Record<string, unknown>;
+  return (
+    isAxisValue(r.x) &&
+    isAxisValue(r.y) &&
+    typeof r.prior_source === "string" &&
+    Object.hasOwn(PRIOR_SOURCE_SET, r.prior_source) &&
+    typeof r.is_anchor === "boolean" &&
+    typeof r.quadrant === "string" &&
+    Object.hasOwn(QUADRANT_SET, r.quadrant)
+  );
+}
+
+export async function fetchQuadrant(signal?: AbortSignal): Promise<QuadrantShoe[]> {
+  const res = await fetch("/api/quadrant", { headers: { accept: "application/json" }, signal });
+  if (!res.ok) throw new Error(`quadrant request failed (${res.status})`);
+  const body: unknown = await res.json();
+  if (!Array.isArray(body)) throw new Error("quadrant response is not a list");
+  if (!body.every(isQuadrantShoe)) throw new Error("quadrant response has a malformed row");
   return body;
 }
 

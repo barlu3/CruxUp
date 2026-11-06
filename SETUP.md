@@ -3,10 +3,11 @@
 CruxUp is a climbing shoe recommender: a Python backend (FastAPI, Postgres) and
 a Next.js frontend. The plan of record is [`timeline.md`](timeline.md).
 
-Current state: **W0 foundations.** The schema, catalogue, prior model and corpus
-collector exist. The API serves `POST /survey` and `GET /shoes` (§7). The
-frontend builds and has a test harness, but its survey and results pages are
-placeholders.
+Current state: **W6-2 complete.** The schema, catalogue, prior model, corpus
+collector and survey capture exist. The API serves `POST /survey`, `GET /shoes`
+and `GET /quadrant` (§7). The questionnaire at `/survey` and the quadrant at
+`/quadrant` reach the API through Next.js route handlers (§8). `/results` is
+still a placeholder (W6-3), and there is no scorer yet.
 
 ---
 
@@ -151,7 +152,7 @@ prints what is wrong and touches nothing.
 ## 6. Verify
 
 ```bash
-python3 -m pytest backend/tests/ -q        # 1610 tests; database-backed ones skip if Postgres is unreachable
+python3 -m pytest backend/tests/ -q        # 1731 passed with a seeded database; 1713 passed, 18 skipped without one
 python3 backend/app/catalog/validate.py    # catalogue invariants
 python3 backend/app/catalog/priors.py      # spec model vs hand placements
 ```
@@ -181,6 +182,7 @@ uvicorn app.main:app --reload      # http://127.0.0.1:8000 (localhost only)
 
 ```bash
 curl -s localhost:8000/shoes | head -c 300                   # catalogue for the anchor picker
+curl -s localhost:8000/quadrant | head -c 300                # every placed shoe with its prior and quadrant
 curl -s -H 'content-type: application/json' \
   -d '{"known_good_shoes": [{"brand": "Scarpa", "model": "Instinct"}]}' \
   localhost:8000/survey                                      # 422: ambiguous -- lists VS and VSR
@@ -237,8 +239,10 @@ npx playwright install chromium
 ### Using the questionnaire with the real API
 
 `/survey` is the questionnaire. The browser only ever calls the app's own
-`/api/shoes` and `/api/survey`, and those route handlers forward the requests
-to the API server-side. To use it end to end:
+`/api/shoes`, `/api/survey` and `/api/quadrant`, and those route handlers
+forward the requests to the API server-side. They forward nothing else, and an
+API error other than the survey's 422 reaches the browser as a fixed 502
+`{"errors": [...]}`. To use it end to end:
 
 1. Start the API (§7). Its default address, `http://127.0.0.1:8000`, is also
    the route handlers' default.
@@ -255,6 +259,14 @@ to the API server-side. To use it end to end:
   returns 502).
 - The route handler accepts only JSON bodies, so `curl` needs
   `-H 'content-type: application/json'`; anything else gets 415.
+
+### The quadrant page
+
+`/quadrant` (linked from the home page) shows every placed shoe as an
+interactive chart and a table. It reads `/api/quadrant`, which forwards to the
+API's `GET /quadrant`, so it needs the API running against a seeded database
+(§5); without one, the page shows an error with **Try again**. The end-to-end
+tests serve it from `e2e/fixtures/quadrant.json` instead.
 
 `/results` is still a placeholder (W6-3).
 

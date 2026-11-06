@@ -38,6 +38,7 @@ import inspect
 import os
 import sys
 import uuid
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,7 @@ from fastapi.testclient import TestClient
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 SURVEY_DIR = BACKEND_DIR / "app" / "survey"
+CATALOG_DIR = BACKEND_DIR / "app" / "catalog"
 
 # `app` is a package rooted at backend/ (run as `app.main` with backend/ on
 # sys.path -- see main.py's own docstring); the survey modules are flat
@@ -55,11 +57,16 @@ SURVEY_DIR = BACKEND_DIR / "app" / "survey"
 # them and exactly as test_survey.py does here.
 sys.path.insert(0, str(BACKEND_DIR))
 sys.path.insert(0, str(SURVEY_DIR))
+# Index 2, after the two entries above: a future catalog module must not be
+# able to shadow a survey module of the same name.
+sys.path.insert(2, str(CATALOG_DIR))
 
 import anchors as A  # noqa: E402
 import preferences as P  # noqa: E402
 import schema as S  # noqa: E402
+import priors as PR  # noqa: E402
 import store as ST  # noqa: E402
+from validate import ANCHORS  # noqa: E402
 
 from app.main import create_app  # noqa: E402
 from app.api.deps import DatabaseNotConfigured, get_catalog, get_conn  # noqa: E402
@@ -191,6 +198,10 @@ def test_post_survey_and_get_shoes_routes_are_registered():
     assert ops.get("/shoes") == {"get"}
 
 
+def test_get_quadrant_route_is_registered_for_get_only():
+    assert _openapi_operations(create_app()).get("/quadrant") == {"get"}
+
+
 def test_no_recommend_route_is_registered():
     """POST /recommend is W7-2, explicitly out of scope for this card.
     Checked in the schema AND by behaviour, so a route hidden from the
@@ -219,20 +230,21 @@ def test_no_cors_middleware_is_installed():
     assert not any(m.cls is CORSMiddleware for m in app.user_middleware)
 
 
-def test_survey_and_shoes_handlers_are_plain_functions_not_coroutines():
+def test_survey_shoes_and_quadrant_handlers_are_plain_functions_not_coroutines():
     """psycopg is synchronous; FastAPI runs sync `def` handlers in its own
     threadpool so the event loop is never blocked -- `async def` here would
     silently block it instead. Read from each module's own APIRouter, which
     FastAPI does not wrap (unlike `app.routes` -- see _openapi_operations)."""
+    from app.api.routes.quadrant import router as quadrant_router
     from app.api.routes.shoes import router as shoes_router
     from app.api.routes.survey import router as survey_router
 
     endpoints = {
         route.path: route.endpoint
-        for router in (survey_router, shoes_router)
+        for router in (survey_router, shoes_router, quadrant_router)
         for route in router.routes
     }
-    assert set(endpoints) == {"/survey", "/shoes"}
+    assert set(endpoints) == {"/survey", "/shoes", "/quadrant"}
     for path, endpoint in endpoints.items():
         assert not inspect.iscoroutinefunction(endpoint), (
             f"{path} handler must be a plain `def`, not `async def`"
@@ -665,6 +677,13 @@ def test_real_get_conn_closes_the_connection_after_get_shoes(real_get_conn):
     assert opened[0].commits == 0, "a read-only endpoint must never commit"
 
 
+def test_real_get_conn_closes_the_connection_after_get_quadrant(real_get_conn):
+    opened, _ = real_get_conn
+    TestClient(create_app()).get("/quadrant")
+
+    assert [c.close_calls for c in opened] == [1]
+
+
 def test_database_not_configured_is_a_distinct_exception_type():
     """Sanity check on the fixture above: DatabaseNotConfigured must be its
     own exception, not accidentally aliased to psycopg.OperationalError (or
@@ -774,6 +793,133 @@ def test_get_shoes_round_trips_through_resolve_one_for_every_item():
         )
         assert err is None, f"{item} failed to round-trip: {err}"
         assert resolved["shoe_id"] == item["id"]
+
+
+# ==========================================================================
+# C2. GET /quadrant, hermetic
+# ==========================================================================
+
+def _quadrant_row(brand="Scarpa", model="Drago", version="", gender="unisex",
+                  x=Decimal("0.800"), y=Decimal("-0.400"), source="hand"):
+    """Priors are Decimal because the column is NUMERIC(4,3) and psycopg
+    returns NUMERIC as Decimal -- the route must convert them."""
+    return (uuid.uuid4(), brand, model, version, gender, x, y, source)
+
+
+def _quadrant_get(rows, raise_server_exceptions=True):
+    conn = _FakeConn(rows=rows)
+    app = create_app()
+    app.dependency_overrides[get_conn] = lambda: conn
+    client = TestClient(app, raise_server_exceptions=raise_server_exceptions)
+    return client.get("/quadrant"), conn
+
+
+def _quadrant_item(**row_kwargs):
+    resp, _ = _quadrant_get([_quadrant_row(**row_kwargs)])
+    return resp.json()[0]
+
+
+def test_get_quadrant_items_have_exactly_the_ten_keys():
+    assert set(_quadrant_item()) == {
+        "id", "brand", "model", "version", "gender",
+        "x", "y", "prior_source", "is_anchor", "quadrant",
+    }
+
+
+def test_get_quadrant_converts_decimal_priors_to_float():
+    assert _quadrant_item(x=Decimal("0.800"))["x"] == 0.8
+
+
+def test_get_quadrant_base_solution_is_an_anchor():
+    assert _quadrant_item(brand="La Sportiva", model="Solution", version="")["is_anchor"] is True
+
+
+def test_get_quadrant_solution_comp_is_not_an_anchor():
+    assert _quadrant_item(brand="La Sportiva", model="Solution", version="Comp")["is_anchor"] is False
+
+
+def test_get_quadrant_instinct_vs_is_not_an_anchor():
+    assert _quadrant_item(brand="Scarpa", model="Instinct", version="VS")["is_anchor"] is False
+
+
+def test_get_quadrant_instinct_vsr_is_an_anchor():
+    assert _quadrant_item(brand="Scarpa", model="Instinct", version="VSR")["is_anchor"] is True
+
+
+def test_get_quadrant_prior_source_literal_matches_the_prior_source_enum():
+    from typing import get_args
+
+    from app.api.routes.quadrant import QuadrantShoeOut
+
+    annotation = QuadrantShoeOut.model_fields["prior_source"].annotation
+    assert set(get_args(annotation)) == {s.value for s in PR.PriorSource}
+
+
+def test_get_quadrant_negative_x_negative_y_is_q2():
+    assert _quadrant_item(x=Decimal("-0.300"), y=Decimal("-0.600"))["quadrant"] == "Q2"
+
+
+def test_get_quadrant_positive_x_positive_y_is_q4():
+    assert _quadrant_item(x=Decimal("0.300"), y=Decimal("0.600"))["quadrant"] == "Q4"
+
+
+def test_get_quadrant_empty_table_returns_an_empty_list():
+    resp, _ = _quadrant_get([])
+    assert resp.json() == []
+
+
+def test_get_quadrant_positive_x_negative_y_is_q1():
+    assert _quadrant_item(x=Decimal("0.700"), y=Decimal("-0.400"))["quadrant"] == "Q1"
+
+
+def test_get_quadrant_negative_x_positive_y_is_q3():
+    assert _quadrant_item(x=Decimal("-0.500"), y=Decimal("0.500"))["quadrant"] == "Q3"
+
+
+def test_get_quadrant_spec_prior_source_passes_through():
+    assert _quadrant_item(source="spec")["prior_source"] == "spec"
+
+
+def test_get_quadrant_on_axis_x_row_is_a_500():
+    resp, _ = _quadrant_get([_quadrant_row(x=Decimal("0.000"))], raise_server_exceptions=False)
+    assert resp.status_code == 500
+
+
+def test_get_quadrant_on_axis_x_row_has_the_generic_body():
+    resp, _ = _quadrant_get([_quadrant_row(x=Decimal("0.000"))], raise_server_exceptions=False)
+    assert resp.json() == {"detail": "could not complete the request"}
+
+
+def test_get_quadrant_on_axis_y_row_is_a_500():
+    resp, _ = _quadrant_get([_quadrant_row(y=Decimal("0.000"))], raise_server_exceptions=False)
+    assert resp.status_code == 500
+
+
+def test_get_quadrant_executes_its_sql_with_no_bind_parameters():
+    _, conn = _quadrant_get([_quadrant_row()])
+    assert [params for _, params in conn.calls] == [None]
+
+
+def _quadrant_operational_error_response():
+    app = create_app()
+
+    def _raise_operational():
+        raise psycopg.OperationalError("SECRET_MARKER_QUADRANT")
+
+    app.dependency_overrides[get_conn] = _raise_operational
+    return TestClient(app).get("/quadrant")
+
+
+def test_get_quadrant_operational_error_is_503():
+    assert _quadrant_operational_error_response().status_code == 503
+
+
+def test_get_quadrant_operational_error_has_the_generic_body():
+    assert _quadrant_operational_error_response().json() == {"detail": "database unavailable"}
+
+
+def test_get_quadrant_operational_error_does_not_leak_the_marker():
+    assert "SECRET_MARKER_QUADRANT" not in _quadrant_operational_error_response().text
 
 
 # ==========================================================================
@@ -953,3 +1099,35 @@ def test_db_post_survey_invalid_payload_leaves_user_survey_row_count_unchanged(l
         cur.execute("SELECT count(*) FROM user_survey")
         (after,) = cur.fetchone()
     assert after == before
+
+
+def test_db_get_quadrant_length_matches_live_count_of_placed_shoes(live_client, db_conn):
+    body = live_client.get("/quadrant").json()
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM shoe WHERE quadrant_x_prior IS NOT NULL")
+        (count,) = cur.fetchone()
+    assert len(body) == count
+
+
+@pytest.fixture()
+def seeded_db(db_conn):
+    """Anchor assertions are meaningless against an empty `shoe` table (a
+    fresh migrated-but-unseeded DB), so skip rather than fail there."""
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM shoe")
+        (count,) = cur.fetchone()
+    if count == 0:
+        pytest.skip("shoe table is empty; run the seed to exercise anchor assertions")
+
+
+def test_db_get_quadrant_flags_exactly_five_anchors(live_client, seeded_db):
+    body = live_client.get("/quadrant").json()
+    assert sum(item["is_anchor"] for item in body) == 5
+
+
+def test_db_get_quadrant_each_anchor_sits_in_its_section_3_quadrant(live_client, seeded_db):
+    body = live_client.get("/quadrant").json()
+    actual = {
+        (i["brand"], i["model"], i["version"]): i["quadrant"] for i in body if i["is_anchor"]
+    }
+    assert actual == ANCHORS

@@ -1,0 +1,346 @@
+"use client";
+
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
+
+import { formatAxisValue } from "../lib/format-axis-value";
+import { QUADRANT_LABEL } from "../lib/quadrant-labels";
+import { PLOT_PADDING, VIEW_SIZE, toChartPoint } from "../lib/quadrant-scale";
+import { shoeName } from "../lib/shoe";
+import type { PriorSource, QuadrantShoe } from "../lib/types";
+
+export const PROVENANCE_LABEL: Record<PriorSource, string> = {
+  hand: "Hand-placed",
+  spec: "Spec-derived",
+  corpus: "Corpus-derived",
+};
+const ANCHOR_LABEL = "Section 3 reference shoe";
+const MARK_RADIUS = 5;
+const ANCHOR_RADIUS = 7;
+// Transparent target so a point is easy to hit without enlarging the mark. The svg is fluid, so
+// size it for the narrowest case: 328px phone content width (360 - 2x16 gutters) gives
+// 40 * 328 / 480 = ~27px >= 24px. Overlap in dense clusters is fine: the marks are repeated
+// above every hit area, and the keyboard reaches every shoe.
+const HIT_RADIUS = 20;
+// Long enough to cross the 0.75rem gap from a point to its tooltip (WCAG 1.4.13 hoverable).
+const HOVER_HIDE_DELAY_MS = 300;
+const NEUTRAL_THRESHOLD = 0.05;
+const FOCUS_RING_RADIUS = 11;
+const PLOT_END = VIEW_SIZE - PLOT_PADDING;
+const CENTER = VIEW_SIZE / 2;
+// Text rows in the padding around the frame, sized for 18-unit text.
+const LINE_HEIGHT = 20;
+const TOP_ROW_LINE_2 = PLOT_PADDING - 10;
+const TOP_ROW_LINE_1 = TOP_ROW_LINE_2 - LINE_HEIGHT;
+const TOP_ROW_SOFT = TOP_ROW_LINE_1 - LINE_HEIGHT;
+const BOTTOM_ROW_LINE_1 = PLOT_END + 20;
+const AXIS_ROW = BOTTOM_ROW_LINE_1 + 2 * LINE_HEIGHT + 2;
+
+export function QuadrantChart({ shoes }: { shoes: QuadrantShoe[] }) {
+  const baseId = useId();
+  const titleId = `${baseId}-title`;
+  const instructionsId = `${baseId}-instructions`;
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const pointRefs = useRef(new Map<string, SVGGElement>());
+  const [tabStopId, setTabStopId] = useState<string | null>(null);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [isTooltipDismissed, setIsTooltipDismissed] = useState(false);
+  const hideTimerRef = useRef<number | undefined>(undefined);
+
+  const ordered = useMemo(() => sortShoes(shoes), [shoes]);
+  const activeId = hoveredId ?? focusedId;
+  const tooltipShoe = isTooltipDismissed ? undefined : ordered.find((shoe) => shoe.id === activeId);
+
+  // Document-level so Escape also dismisses a tooltip opened by hover alone (WCAG 1.4.13).
+  const isTooltipShown = tooltipShoe !== undefined;
+  useEffect(() => {
+    if (!isTooltipShown) return;
+    function handleDocumentKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") setIsTooltipDismissed(true);
+    }
+    // Touch has no mouseleave, so a tap elsewhere is the only way to clear a hover tooltip.
+    function handleDocumentPointerDown(event: PointerEvent) {
+      if (!wrapperRef.current?.contains(event.target as Node)) setHoveredId(null);
+    }
+    document.addEventListener("keydown", handleDocumentKeyDown);
+    document.addEventListener("pointerdown", handleDocumentPointerDown);
+    return () => {
+      document.removeEventListener("keydown", handleDocumentKeyDown);
+      document.removeEventListener("pointerdown", handleDocumentPointerDown);
+    };
+  }, [isTooltipShown]);
+
+  if (shoes.length === 0) {
+    return <p className="text-muted">No shoes to show</p>;
+  }
+
+  const effectiveTabStopId = ordered.some((s) => s.id === tabStopId) ? tabStopId : ordered[0].id;
+  const hasCorpus = shoes.some((s) => s.prior_source === "corpus");
+  const hasHand = shoes.some((s) => s.prior_source === "hand");
+  const hasSpec = shoes.some((s) => s.prior_source === "spec");
+  const hasAnchor = shoes.some((s) => s.is_anchor);
+
+  function handleKeyDown(event: KeyboardEvent<SVGGElement>, index: number) {
+    const lastIndex = ordered.length - 1;
+    let next: number;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") next = Math.min(index + 1, lastIndex);
+    else if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = Math.max(index - 1, 0);
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = lastIndex;
+    else return;
+    event.preventDefault();
+    pointRefs.current.get(ordered[next].id)?.focus();
+  }
+
+  function handlePointerEnter(id: string) {
+    window.clearTimeout(hideTimerRef.current);
+    setHoveredId(id);
+    setIsTooltipDismissed(false);
+  }
+
+  function handlePointerLeave() {
+    window.clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = window.setTimeout(() => setHoveredId(null), HOVER_HIDE_DELAY_MS);
+  }
+
+  return (
+    <figure className="mx-auto flex w-full max-w-xl flex-col gap-3">
+      <div ref={wrapperRef} className="relative">
+        <svg
+          viewBox={`0 0 ${VIEW_SIZE} ${VIEW_SIZE}`}
+          role="group"
+          aria-labelledby={titleId}
+          aria-describedby={instructionsId}
+          className="block h-auto w-full"
+        >
+          <title id={titleId}>Shoe quadrant chart: comfort to performance, stiff to soft</title>
+          <Frame />
+          {/* WHY text-lg: 12 CSS px at the 328px phone content width needs 12 * 480 / 328 = ~18 viewBox units. */}
+          <g className="fill-muted text-lg" aria-hidden="true">
+            <text x={CENTER} y={TOP_ROW_SOFT} textAnchor="middle">Soft</text>
+            {/* Outside the frame so no dot or anchor label can sit on a quadrant label. Two lines each: one line is too wide for both corner labels at this size. */}
+            <QuadrantCornerLabel label={QUADRANT_LABEL.Q3} x={PLOT_PADDING} y={TOP_ROW_LINE_1} anchor="start" />
+            <QuadrantCornerLabel label={QUADRANT_LABEL.Q4} x={PLOT_END} y={TOP_ROW_LINE_1} anchor="end" />
+            <QuadrantCornerLabel label={QUADRANT_LABEL.Q2} x={PLOT_PADDING} y={BOTTOM_ROW_LINE_1} anchor="start" />
+            <QuadrantCornerLabel label={QUADRANT_LABEL.Q1} x={PLOT_END} y={BOTTOM_ROW_LINE_1} anchor="end" />
+            {/* Anchored to the frame edges: beside the frame "Performance" overflows the viewBox. */}
+            <text x={PLOT_PADDING} y={AXIS_ROW} textAnchor="start">Comfort</text>
+            <text x={CENTER} y={AXIS_ROW} textAnchor="middle">Stiff</text>
+            <text x={PLOT_END} y={AXIS_ROW} textAnchor="end">Performance</text>
+          </g>
+          {ordered.map((shoe, index) => {
+            const { cx, cy } = toChartPoint(shoe.x, shoe.y);
+            const radius = shoe.is_anchor ? ANCHOR_RADIUS : MARK_RADIUS;
+            const isLabelLeft = shoe.x > 0.6;
+            return (
+              <g
+                key={shoe.id}
+                ref={(node) => {
+                  if (node) pointRefs.current.set(shoe.id, node);
+                  else pointRefs.current.delete(shoe.id);
+                }}
+                role="img"
+                aria-roledescription="shoe"
+                aria-label={toPointName(shoe)}
+                tabIndex={shoe.id === effectiveTabStopId ? 0 : -1}
+                className={`outline-none ${shoe.prior_source === "spec" ? "fill-background" : "fill-foreground"}`}
+                onKeyDown={(event) => handleKeyDown(event, index)}
+                onFocus={() => {
+                  setTabStopId(shoe.id);
+                  setFocusedId(shoe.id);
+                  setIsTooltipDismissed(false);
+                }}
+                onBlur={() => setFocusedId(null)}
+                onMouseEnter={() => handlePointerEnter(shoe.id)}
+                onMouseLeave={handlePointerLeave}
+                onPointerLeave={handlePointerLeave}
+              >
+                <circle cx={cx} cy={cy} r={HIT_RADIUS} className="fill-transparent stroke-none" />
+                {focusedId === shoe.id && (
+                  <circle cx={cx} cy={cy} r={FOCUS_RING_RADIUS} strokeWidth={2} className="fill-none stroke-focus-ring" />
+                )}
+                <Mark shoe={shoe} cx={cx} cy={cy} r={radius} />
+                {shoe.is_anchor && (
+                  <text
+                    x={isLabelLeft ? cx - radius - 6 : cx + radius + 6}
+                    y={cy}
+                    textAnchor={isLabelLeft ? "end" : "start"}
+                    dominantBaseline="middle"
+                    strokeWidth={4}
+                    className="fill-foreground stroke-background text-lg [paint-order:stroke]"
+                  >
+                    {toShortName(shoe)}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+          {/* Every mark again, above all hit areas, so a later point's hit area cannot take the pointer from an earlier point's visible mark. */}
+          <g aria-hidden="true">
+            {ordered.map((shoe) => {
+              const { cx, cy } = toChartPoint(shoe.x, shoe.y);
+              return (
+                <g
+                  key={shoe.id}
+                  className={shoe.prior_source === "spec" ? "fill-background" : "fill-foreground"}
+                  onMouseEnter={() => handlePointerEnter(shoe.id)}
+                  onMouseLeave={handlePointerLeave}
+                  onPointerLeave={handlePointerLeave}
+                >
+                  <Mark shoe={shoe} cx={cx} cy={cy} r={shoe.is_anchor ? ANCHOR_RADIUS : MARK_RADIUS} />
+                </g>
+              );
+            })}
+          </g>
+        </svg>
+        <p id={instructionsId} className="sr-only">
+          Use the arrow keys to move between shoes from most comfort-focused to most
+          performance-focused; Home and End jump to the ends; Escape hides the details.
+        </p>
+        {tooltipShoe && (
+          <Tooltip
+            shoe={tooltipShoe}
+            onMouseEnter={() => window.clearTimeout(hideTimerRef.current)}
+            onMouseLeave={handlePointerLeave}
+          />
+        )}
+      </div>
+      <ul aria-label="Legend" className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-foreground">
+        {hasHand && <LegendItem label={PROVENANCE_LABEL.hand} swatch={<Swatch kind="hand" />} />}
+        {hasSpec && <LegendItem label={PROVENANCE_LABEL.spec} swatch={<Swatch kind="spec" />} />}
+        {hasCorpus && <LegendItem label={PROVENANCE_LABEL.corpus} swatch={<Swatch kind="corpus" />} />}
+        {hasAnchor && <LegendItem label={ANCHOR_LABEL} swatch={<Swatch kind="anchor" />} />}
+      </ul>
+    </figure>
+  );
+}
+
+function QuadrantCornerLabel({ label, x, y, anchor }: { label: string; x: number; y: number; anchor: "start" | "end" }) {
+  // "Q4 · Performance + soft" -> ["Q4 · Performance", "+ soft"]
+  const split = label.indexOf(" + ");
+  return (
+    <text textAnchor={anchor}>
+      <tspan x={x} y={y}>{label.slice(0, split)}</tspan>
+      <tspan x={x} y={y + LINE_HEIGHT}>{label.slice(split + 1)}</tspan>
+    </text>
+  );
+}
+
+function Frame() {
+  const quarter = (PLOT_END - PLOT_PADDING) / 4;
+  const line = (key: string, x1: number, y1: number, x2: number, y2: number, className = "stroke-border") => (
+    <line key={key} x1={x1} y1={y1} x2={x2} y2={y2} strokeWidth={1} vectorEffect="non-scaling-stroke" className={className} />
+  );
+  return (
+    <g aria-hidden="true">
+      <rect
+        x={PLOT_PADDING}
+        y={PLOT_PADDING}
+        width={PLOT_END - PLOT_PADDING}
+        height={PLOT_END - PLOT_PADDING}
+        strokeWidth={1}
+        vectorEffect="non-scaling-stroke"
+        className="fill-none stroke-border"
+      />
+      {line("grid-v1", PLOT_PADDING + quarter, PLOT_PADDING, PLOT_PADDING + quarter, PLOT_END)}
+      {line("grid-v3", PLOT_PADDING + 3 * quarter, PLOT_PADDING, PLOT_PADDING + 3 * quarter, PLOT_END)}
+      {line("grid-h1", PLOT_PADDING, PLOT_PADDING + quarter, PLOT_END, PLOT_PADDING + quarter)}
+      {line("grid-h3", PLOT_PADDING, PLOT_PADDING + 3 * quarter, PLOT_END, PLOT_PADDING + 3 * quarter)}
+      {line("axis-x", PLOT_PADDING, CENTER, PLOT_END, CENTER, "stroke-muted")}
+      {line("axis-y", CENTER, PLOT_PADDING, CENTER, PLOT_END, "stroke-muted")}
+    </g>
+  );
+}
+
+// Provenance is shape and fill, never colour alone: hand filled, spec hollow, corpus square.
+function Mark({ shoe, cx, cy, r }: { shoe: QuadrantShoe; cx: number; cy: number; r: number }) {
+  const strokeClass = shoe.is_anchor || shoe.prior_source === "spec" ? "stroke-foreground" : "stroke-background";
+  const strokeWidth = shoe.is_anchor ? 3 : 2;
+  if (shoe.prior_source === "corpus") {
+    return <rect x={cx - r} y={cy - r} width={2 * r} height={2 * r} strokeWidth={strokeWidth} className={strokeClass} />;
+  }
+  return <circle cx={cx} cy={cy} r={r} strokeWidth={strokeWidth} className={strokeClass} />;
+}
+
+// aria-hidden because it repeats the point's accessible name. It still takes the pointer, so it
+// stays open while hovered (WCAG 1.4.13); the hide delay bridges the gap from the point.
+function Tooltip({
+  shoe,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  shoe: QuadrantShoe;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+}) {
+  const { cx, cy } = toChartPoint(shoe.x, shoe.y);
+  const horizontal = shoe.x > 0.5 ? "-translate-x-[calc(100%+0.75rem)]" : "translate-x-3";
+  const vertical = shoe.y > 0.7 ? "translate-y-3" : "-translate-y-[calc(100%+0.75rem)]";
+  return (
+    <div
+      role="tooltip"
+      aria-hidden="true"
+      style={{ left: `${(cx / VIEW_SIZE) * 100}%`, top: `${(cy / VIEW_SIZE) * 100}%` }}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      className={`absolute z-10 w-max max-w-64 rounded-control border border-control-border bg-surface px-3 py-2 text-sm text-foreground ${horizontal} ${vertical}`}
+    >
+      <strong className="block">{shoeName(shoe)}</strong>
+      {toDetailSentences(shoe).map((sentence) => (
+        <span key={sentence} className="block">
+          {sentence}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function LegendItem({ label, swatch }: { label: string; swatch: ReactNode }) {
+  return (
+    <li className="flex items-center gap-2">
+      {swatch}
+      <span>{label}</span>
+    </li>
+  );
+}
+
+function Swatch({ kind }: { kind: "hand" | "spec" | "corpus" | "anchor" }) {
+  return (
+    <svg viewBox="0 0 20 20" width={20} height={20} aria-hidden="true" className="shrink-0">
+      {kind === "hand" && <circle cx={10} cy={10} r={5} strokeWidth={2} className="fill-foreground stroke-background" />}
+      {kind === "spec" && <circle cx={10} cy={10} r={5} strokeWidth={2} className="fill-background stroke-foreground" />}
+      {kind === "corpus" && <rect x={5} y={5} width={10} height={10} strokeWidth={2} className="fill-foreground stroke-background" />}
+      {kind === "anchor" && <circle cx={10} cy={10} r={7} strokeWidth={3} className="fill-foreground stroke-foreground" />}
+    </svg>
+  );
+}
+
+function sortShoes(shoes: QuadrantShoe[]): QuadrantShoe[] {
+  return [...shoes].sort(
+    (a, b) => a.x - b.x || b.y - a.y || shoeName(a).localeCompare(shoeName(b)),
+  );
+}
+
+function toPointName(shoe: QuadrantShoe): string {
+  return [`${shoeName(shoe)}.`, ...toDetailSentences(shoe)].join(" ");
+}
+
+// Shared by the accessible name and the tooltip so both say the same thing.
+function toDetailSentences(shoe: QuadrantShoe): string[] {
+  return [
+    `Comfort–performance ${formatAxisValue(shoe.x)}, ${toSide(shoe.x, "comfort", "performance")}.`,
+    `Stiff–soft ${formatAxisValue(shoe.y)}, ${toSide(shoe.y, "stiff", "soft")}.`,
+    `${PROVENANCE_LABEL[shoe.prior_source]}.`,
+    ...(shoe.is_anchor ? [`${ANCHOR_LABEL}.`] : []),
+  ];
+}
+
+function toSide(value: number, negative: string, positive: string): string {
+  if (Math.abs(value) < NEUTRAL_THRESHOLD) return "neutral";
+  return `leaning ${value < 0 ? negative : positive}`;
+}
+
+function toShortName(shoe: QuadrantShoe): string {
+  return [shoe.model, shoe.version].filter((part) => part !== "").join(" ");
+}

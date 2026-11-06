@@ -10,6 +10,9 @@ export default function Home() {
       <Link href="/survey" className="mt-6 inline-block underline">
         Start the questionnaire
       </Link>
+      <Link href="/quadrant" className="mt-4 block w-fit underline">
+        Explore the shoe quadrant
+      </Link>
     </main>
   );
 }
