@@ -653,7 +653,7 @@ Everything in this section lives in `frontend/`, a self-contained npm project. P
 
 ### 4.11 Questionnaire and relay — `frontend/src/app/{survey,components,lib,api}/`
 
-The questionnaire that captures a survey (W6-1), and the relay that also serves the quadrant page (W6-2, §4.12). The browser talks only to the app's own origin. Three route handlers relay its requests to the API server-side, so the API is never addressed by the client (§8). Paths below are relative to `frontend/src/app/`.
+The questionnaire that captures a survey (W6-1), and the relay that also serves the quadrant page (W6-2, §4.12). The browser talks only to the app's own origin. Four route handlers relay its requests to the API server-side, so the API is never addressed by the client (§8). Paths below are relative to `frontend/src/app/`.
 
 #### Structure
 | File | Role |
@@ -666,27 +666,30 @@ The questionnaire that captures a survey (W6-1), and the relay that also serves 
 | `lib/payload.ts` | Pure function from form state to request body. |
 | `lib/errors.ts` | Turns the API's 422 messages into plain-language text, linked to the field they concern where recognised. |
 | `lib/shoe.ts` | The display name of a shoe ("Scarpa Instinct VSR (unisex)"), shared by the picker, the error text and the quadrant chart and table. |
-| `lib/api.ts` | Browser client. It calls only `/api/shoes`, `/api/survey` and `/api/quadrant`, and checks the shape of every catalogue and quadrant row it receives. |
+| `lib/api.ts` | Browser client. It calls only `/api/shoes`, `/api/survey`, `/api/quadrant` and `/api/recommend`, and checks the shape of every catalogue and quadrant row it receives. |
 | `api/_lib/backend.ts` | Server-only relay helper: backend address, the path allow-list, capped body reading, the upstream request and the status allow-list. The `_lib` prefix keeps it out of routing. |
 | `api/shoes/route.ts` | `GET /api/shoes` → the API's `GET /shoes`. |
 | `api/survey/route.ts` | `POST /api/survey` → the API's `POST /survey`. |
 | `api/quadrant/route.ts` | `GET /api/quadrant` → the API's `GET /quadrant`. |
+| `api/recommend/route.ts` | `POST /api/recommend` → the API's `POST /recommend` (W6-3, §4.14). |
 
 #### Relay
-- **Scope:** exactly three handlers, one method each, with no catch-all proxy. `/api/docs`, `/api/openapi.json` and `/api/redoc` therefore return 404, and other methods return 405.
-- **Path allow-list:** `callBackend` throws, before any request is made, for a path other than `/survey`, `/shoes` and `/quadrant`. The handler turns the throw into its 502. A FastAPI route added later stays unreachable from the browser until it is listed here.
+- **Scope:** exactly four handlers, one method each, with no catch-all proxy. `/api/docs`, `/api/openapi.json` and `/api/redoc` therefore return 404, and other methods return 405.
+- **Path allow-list:** `callBackend` throws, before any request is made, for a path other than `/survey`, `/shoes`, `/quadrant` and `/recommend`. The handler turns the throw into its 502. A FastAPI route added later stays unreachable from the browser until it is listed here.
 - **Backend address:** the server-only variable `CRUXUP_API_URL`, read on every request; default `http://127.0.0.1:8000`; trailing slashes removed. It is not a `NEXT_PUBLIC_` variable, so it never reaches the browser bundle.
 - **Upstream requests are built fresh:** only `accept: application/json` (plus `content-type: application/json` on `POST`). No incoming header or cookie is forwarded. Requests use `cache: "no-store"`, a 10-second timeout, and `redirect: "error"`.
 - **Request body:**
+  - `/api/recommend` applies the same JSON check, then reads at most 1 KB (`MAX_RECOMMEND_BODY_BYTES`, 1,024 bytes) and returns 413 `{"errors":["request body exceeds 1024 bytes"]}` beyond it. Survey bodies keep the 64 KiB cap below.
   - The survey handler first requires a JSON content type (`application/json` or `application/*+json`, with optional parameters). Anything else, including no content type, gets 415 `{"errors":["request body must be JSON (content-type: application/json)"]}` without contacting the API.
     - The API itself rejects non-JSON bodies, but the relay always labels the body it forwards as JSON, so the relay has to enforce this.
     - It stops cross-site "simple" requests: a `text/plain` POST from another origin, or an HTML form, is not preflighted by the browser.
+    - **No `Origin` or `Sec-Fetch-Site` check is built, and none is needed for CSRF.** A cross-site POST with `application/json` is not a simple request, so the browser sends a CORS preflight first. The route handlers send no CORS headers, so the preflight fails and the request never reaches the handler. Any other content type gets a 415 before any backend call. The check would not stop same-origin XSS, which is the real risk for the survey token (§13).
   - The body is read as a stream with a running byte count, and stops at 65,536 bytes (`MAX_SURVEY_BODY_BYTES`) with a 413 `{"errors":["request body exceeds 65536 bytes"]}`. An oversized `content-length` is refused before reading.
   - The body is forwarded unparsed: every validation rule stays in the Python layer (§4.7, §4.9).
 - **Responses:**
-  - **Status allow-list.** `relay(upstream, expected, unavailable)` passes the upstream status and body through unchanged only for the statuses the route expects: 201 and 422 for `/survey` (the token, and the API's validation list, which the form interprets); 200 for `/shoes` and `/quadrant`.
-  - **Masking.** Any other upstream status (the API's 500 and 503, an unexpected 4xx or 2xx) becomes a 502 with a fixed body, and the upstream body is discarded unread. So does a failed upstream call (refused, timed out, redirected, or a path refused by the allow-list). The bodies are `{"errors":["The survey service is unavailable. Please try again later."]}`, `{"errors":["The catalogue service is unavailable. Please try again later."]}` and `{"errors":["The quadrant service is unavailable. Please try again later."]}`. Every error from the relay therefore has the API's 422 envelope, `{"errors": [...]}`, and no API error text reaches the browser (`timeline.md` §13, decided 2026-11-05).
-  - No handler sets route-segment config. Since Next.js 15, `GET` route handlers are dynamic by default, and `POST` is never cached; the build lists all three as dynamic. Avoiding the `dynamic` export also keeps the handlers valid if Cache Components is ever enabled, since that option removes it.
+  - **Status allow-list.** `relay(upstream, expected, unavailable)` passes the upstream status and body through unchanged only for the statuses the route expects: 201 and 422 for `/survey` (the token, and the API's validation list, which the form interprets); 200 for `/shoes` and `/quadrant`; 200 for `/recommend`. `/api/recommend` maps the API's 404 and 422 to fixed bodies before this check: `{"errors":["survey not found"]}` and `{"errors":["The survey token was not accepted."]}`, with the same statuses.
+  - **Masking.** Any other upstream status (the API's 500 and 503, an unexpected 4xx or 2xx) becomes a 502 with a fixed body, and the upstream body is discarded unread. So does a failed upstream call (refused, timed out, redirected, or a path refused by the allow-list). The bodies are `{"errors":["The survey service is unavailable. Please try again later."]}`, `{"errors":["The catalogue service is unavailable. Please try again later."]}`, `{"errors":["The quadrant service is unavailable. Please try again later."]}` and `{"errors":["The results service is unavailable. Please try again later."]}`. Every error from the relay therefore has the API's 422 envelope, `{"errors": [...]}`, and no API error text reaches the browser (`timeline.md` §13, decided 2026-11-05).
+  - No handler sets route-segment config. Since Next.js 15, `GET` route handlers are dynamic by default, and `POST` is never cached; the build lists all four as dynamic. Avoiding the `dynamic` export also keeps the handlers valid if Cache Components is ever enabled, since that option removes it.
 
 #### Form
 - **Groups:** "Your feet" (width, instep, toe shape, arch, heel, street size), "How you climb" (discipline, terrain, level), "Budget" (cap in US dollars), and "Shoes you know" (the two pickers).
@@ -807,7 +810,7 @@ The ranked results page (W6-3, `timeline.md` §11 and §13). It reads the survey
 - **Ready view.** The notes (warnings, gated-out counts and unknown prices, from `lib/recommendation-copy.ts`), a key to the three confidence labels, the ranked `ResultCard`s, and the quadrant. Each card is an `<article>` named by its heading and shows its confidence as text. A low-confidence card has a dashed `--warning` border and a rough-starting-point line. A shoe with no price says "Price unknown". A term the scorer dropped reads "Not used", with its reason. The `--warning` token already existed in `globals.css`; it is light-only, like the other tokens.
 - **Chart.** `QuadrantChart` receives the ranked shoes, the target (omitted when null) and the top 3 as `highlightIds`. The top 3 are filled in the accent colour and labelled; the rest are muted. A highlighted label goes on the roomier side of its point. The figure is capped at `max-w-sm`, because only a few shoes are labelled. The target never takes the pointer, and the tooltip stays open while hovered (§4.12).
 - **Copy.** The page intro says the ranking is a suggestion, that placements are estimates, and that the fit rules have not yet been checked by climbers.
-- **Tests.** `results/ResultsView.test.tsx` (36 tests), `ResultCard.test.tsx`, `page.test.tsx`, `routes.test.ts` for the route handler, and `e2e/results.spec.ts` (11 journeys). The journeys run against the mock API's `recommend.json` fixture, and the token `e2e-expired-token` gets a 404.
+- **Tests.** `results/ResultsView.test.tsx` (39 tests), `ResultCard.test.tsx`, `page.test.tsx`, `routes.test.ts` for the route handler, and `e2e/results.spec.ts` (11 journeys). The journeys run against the mock API's `recommend.json` fixture, and the token `e2e-expired-token` gets a 404.
 
 ---
 
@@ -1036,7 +1039,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
     parameter and appears in no SQL text, response or log line; the 404 and 422
     bodies are fixed. Each call writes: it commits `recommendation` rows for the
     survey (§6.5). Anyone holding a token can trigger that write. The token stays out of URLs and
-    logs, but a script on the origin can read it from `sessionStorage` (§13, 2026-11-06).
+    logs, but a script on the origin can read it from `sessionStorage` (§13, 2026-11-06). An `Origin` check would not change that (§4.11).
   - **Responses:** 201 returns only the token. 5xx bodies are fixed strings.
     The log never records a payload, DSN or exception message.
   - **Error text quotes input.** 422 messages quote submitted values such as
@@ -1045,19 +1048,18 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - **Exposure:** the API binds to localhost and has no authentication, because
   the survey is anonymous by design. The Next.js route handlers (§4.11) are the
   only intended client. They forward only `/survey`, `/shoes`, `/quadrant` and `/recommend` (an allow-list in
-  `callBackend`), require a JSON content type on survey submissions (415
-  otherwise), cap request bodies at 64 KiB, never forward client headers or
+  `callBackend`), require a JSON content type on every POST (415
+  otherwise), cap survey bodies at 64 KiB and recommend bodies at 1 KB, never forward client headers or
   cookies, do not follow redirects, and relay only expected statuses, masking
   every other one as a fixed 502.
 - **Before any public deployment** (identified in review, not built):
   - rate limiting at the edge;
-  - an `Origin` / `Sec-Fetch-Site` check on `POST /api/survey`;
   - proxy request and body timeouts;
   - a size cap on relayed API responses (the status allow-list is built, §4.11);
   - security headers (`X-Content-Type-Options`, `Referrer-Policy`, `frame-ancestors` / `X-Frame-Options`) and `poweredByHeader: false` in `next.config.ts`;
   - keeping the API on a private address, so its `/docs` stays unreachable.
 - **Frontend rendering:** API error messages are shown only as text, never as
-  markup. The questionnaire neither displays nor stores the survey token.
+  markup. The questionnaire stores the survey token in `sessionStorage` (§4.14) and never displays it.
 - **Git hygiene:** the root `.gitignore` covers `.env`, `.env*.local`, `backend/data/*.sqlite3` (collected third-party content) and `.pytest_cache`. `frontend/.gitignore` covers `node_modules`, `.next`, `next-env.d.ts`, coverage and Playwright output (`test-results/`, `playwright-report/`, `blob-report/`). `frontend/package-lock.json` is committed.
 - **Dependency audit:** `npm audit` reports no known vulnerabilities at the pinned versions (§10.2).
 
@@ -1131,7 +1133,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 ## 11. Testing architecture
 
 - **Runners:** `pytest` for the backend, run from the repository root: `python3 -m pytest backend/tests/ -q`. Vitest and Playwright for the frontend (§4.10), run from `frontend/`: `npm test` and `npm run test:e2e`.
-- **Frontend tests** (paths under `frontend/`): 442 Vitest tests in 19 files and 35 Playwright tests in 4 files.
+- **Frontend tests** (paths under `frontend/`): 446 Vitest tests in 19 files and 35 Playwright tests in 4 files.
   - **`src/app/page.test.tsx`** — 3 Vitest tests. The home page renders a level-1 heading `CruxUp`, a link whose `href` is `/survey`, and a link whose `href` is `/quadrant`. All use role-based queries.
   - **`src/app/survey/page.test.tsx`** — 1 test: the page's metadata title, and that it renders a single `<h1>`.
   - **`src/app/lib/payload.test.ts`** — 8 tests (the eighth checks that chosen shoes keep their order, which the error links rely on):
@@ -1307,7 +1309,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   - The migration apply/reverse check is automated here; `SETUP.md` §3 remains the manual procedure for a local database.
 - **Scorer test files** (§4.13): `test_score.py` (75), `test_fit.py` (47), `test_style.py` (21), `test_confidence.py` (33), `test_scorer_config.py` (19) and `test_recommend_personas.py` (16). None needs a database.
 - **Stub test files:** `test_aggregate.py`, `test_calibration.py`.
-- **Total:** backend 2,017 passed with a seeded PostgreSQL 16.15, and 1,991 passed plus 26 skipped without one (measured 2026-11-06 on the W6-3 branch). Frontend: 442 Vitest tests and 35 Playwright tests (dev and `CI=1`).
+- **Total:** backend 2,017 passed with a seeded PostgreSQL 16.15, and 1,991 passed plus 26 skipped without one (measured 2026-11-06 on the W6-3 branch). Frontend: 446 Vitest tests and 35 Playwright tests (dev and `CI=1`).
 
 ---
 
@@ -1362,8 +1364,8 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - **Service-edge controls live in the Next.js route handlers.** The API has no
   request-size limit, leaves `/docs` and `/openapi.json` enabled, and has no
   authentication (§4.9, §9.1). This is safe only while it is reachable solely
-  through the relay. The relay forwards only `/survey`, `/shoes` and `/quadrant`,
-  requires JSON, and caps bodies at 64 KiB (§4.11), but **neither layer limits request
+  through the relay. The relay forwards only `/survey`, `/shoes`, `/quadrant` and `/recommend`,
+  requires JSON, and caps survey bodies at 64 KiB and recommend bodies at 1 KB (§4.11), but **neither layer limits request
   rate**, so nothing stops repeated anonymous submissions. The other controls
   still needed before a public deployment are listed in §9.1.
 - **No connection pool.** Each request opens and closes its own connection. At
@@ -1395,7 +1397,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   tokens the quadrant page uses, without dark-mode values; the questionnaire
   still uses Tailwind palette classes. A dark mode needs both to move to tokens
   together.
-- **Results page limits (W6-3).** Every ranked shoe is listed: there is no paging and no gender filter (the scorer gap in §4.13). The legend's "Highlighted" label is generic. The chart is capped at `max-w-sm`, so it is small on a phone. No `Origin` check guards `/api/recommend`, and the token is readable by script (`timeline.md` §13).
+- **Results page limits (W6-3).** Every ranked shoe is listed: there is no paging and no gender filter (the scorer gap in §4.13). The legend's "Highlighted" label is generic. The chart is capped at `max-w-sm`, so it is small on a phone. No `Origin` check is built; it is not needed for CSRF (§4.11), and it would not stop a script on the origin, which can read the token (`timeline.md` §13).
 - **Error translation depends on the API's wording.**
   - The API returns 422 errors as developer-phrased strings, e.g. `known_good_shoes[0]: 'size' contains [','] -- …`.
   - The questionnaire translates the two shoe-size shapes into plain language tied to their field (§4.11) by matching that text. Every other message falls back to generic wording, with the original under "Technical details".
@@ -1440,7 +1442,7 @@ cd frontend                                                      # every npm com
 npm ci                                                           # installs exactly what package-lock.json records
 npm run lint                                                     # no errors, no warnings
 npm run typecheck                                                # clean
-npm run test:coverage                                            # 442 passed in 19 files; coverage thresholds met
+npm run test:coverage                                            # 446 passed in 19 files; coverage thresholds met
 npm run build                                                    # static: /, /_not-found, /quadrant, /results, /survey; dynamic: /api/quadrant, /api/recommend, /api/shoes, /api/survey
 npm run test:e2e                                                 # 35 passed (local, next dev + mock API on :8100)
 CI=1 npm run test:e2e                                            # 35 passed (production build, next start) — run after npm run build
