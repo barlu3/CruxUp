@@ -3,10 +3,12 @@
 CruxUp is a climbing shoe recommender: a Python backend (FastAPI, Postgres) and
 a Next.js frontend. The plan of record is [`timeline.md`](timeline.md).
 
-Current state: **W6-1 complete.** The schema, catalogue, prior model, corpus
-collector and survey capture exist. The API serves `POST /survey` and `GET /shoes`
-(§7). The questionnaire at `/survey` saves through Next.js route handlers to the
-API (§8). `/results` is still a placeholder (W6-3), and there is no scorer yet.
+Current state: **W6-2 complete.** The schema, catalogue, prior model, corpus
+collector and survey capture exist. The API serves `POST /survey`, `GET /shoes`
+and `GET /quadrant` (§7). The questionnaire at `/survey` saves through Next.js
+route handlers to the API (§8). The quadrant page at `/quadrant` shows every
+placed shoe as a chart and a table (§8). `/results` is still a placeholder
+(W6-3), and there is no scorer yet.
 
 ---
 
@@ -151,7 +153,7 @@ prints what is wrong and touches nothing.
 ## 6. Verify
 
 ```bash
-python3 -m pytest backend/tests/ -q        # 1639 passed, 15 skipped without a database; the 15 DB-backed tests run when Postgres is reachable
+python3 -m pytest backend/tests/ -q        # 1711 passed, 18 skipped without a database; the 18 DB-backed tests run when Postgres is reachable
 python3 backend/app/catalog/validate.py    # catalogue invariants
 python3 backend/app/catalog/priors.py      # spec model vs hand placements
 ```
@@ -181,6 +183,7 @@ uvicorn app.main:app --reload      # http://127.0.0.1:8000 (localhost only)
 
 ```bash
 curl -s localhost:8000/shoes | head -c 300                   # catalogue for the anchor picker
+curl -s localhost:8000/quadrant | head -c 300                # every placed shoe with its prior and quadrant
 curl -s -H 'content-type: application/json' \
   -d '{"known_good_shoes": [{"brand": "Scarpa", "model": "Instinct"}]}' \
   localhost:8000/survey                                      # 422: ambiguous -- lists VS and VSR
@@ -260,7 +263,7 @@ has those libraries only needs `npx playwright install chromium`.
 - `npm run test:watch` re-runs Vitest on save. `npm run test:coverage` writes a
   V8 coverage report to `coverage/` (no thresholds yet).
 
-The questionnaire at `/survey` is built (W6-1). `/results` is a placeholder until W6-3.
+The questionnaire at `/survey` is built (W6-1). The quadrant at `/quadrant` is built (W6-2): a chart and a table of every placed shoe, linked from the home page. It reads `/api/quadrant`, so it needs the backend running against a seeded database; without one, the page shows an error. `/results` is a placeholder until W6-3.
 
 > **Running `next dev` from a coding agent** (Claude Code, Cursor and similar)
 > makes Next.js 16.3 write `AGENTS.md` and `CLAUDE.md` into `frontend/`, or
