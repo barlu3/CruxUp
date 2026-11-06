@@ -18,11 +18,15 @@
 # DATA PROVENANCE — READ BEFORE USING
 #   stated:     brand, model, closure, downturn, rubber, stiffness_spec,
 #               last_shape — stable published characteristics of these models.
-#   UNVERIFIED: msrp_usd is null on every row. Prices move, vary by region and
-#               retailer, and feed the section 7.6 budget gate. Guessing them
-#               would put fabricated numbers behind a user-facing filter.
-#               Populate from brand sites before the budget gate ships;
-#               tracked as open item 1 at the foot of this file.
+#   sourced:    msrp_usd, 2026-11-05. US list price (never a sale price) from
+#               the brand's US site (high) or the list/original price agreed by
+#               at least 2 retailers (medium); null where unconfirmed. The source
+#               URL and confidence are in a `# msrp:` comment above each value.
+#               Medium confidence: Testarossa, Altura, Aragon, Hiangle (retailer
+#               list prices; the first three are discontinued or off the brand
+#               site). Null: Anasazi Pro, Mythos, Maestro Mid, Astroman, Katana
+#               Velcro, Elektra, Moccasym. Open item 1 at the foot lists the
+#               spot-checks a human must make.
 #
 # The five section-3 anchors are marked `anchor: true` and use the CORRECTED
 # placements (v3): Solution Q1, TC Pro Q2, Drago Q4, Instinct VSR Q4,
@@ -43,7 +47,8 @@ shoes:
     stiffness_spec: moderate-stiff
     closure: velcro
     rubber: Vibram XS Grip2
-    msrp_usd: null
+    # msrp: https://www.lasportivausa.com/products/solution (high, 2026-11-05)
+    msrp_usd: 219
     quadrant_x_prior: 0.65
     quadrant_y_prior: -0.25
     prior_source: hand
@@ -62,7 +67,8 @@ shoes:
     stiffness_spec: stiff
     closure: velcro
     rubber: Vibram XS Edge
-    msrp_usd: null
+    # msrp: https://www.lasportivausa.com/products/miura-vs (high, 2026-11-05)
+    msrp_usd: 219
     quadrant_x_prior: 0.60
     quadrant_y_prior: -0.55
     prior_source: hand
@@ -78,7 +84,8 @@ shoes:
     stiffness_spec: stiff
     closure: lace
     rubber: Vibram XS Edge
-    msrp_usd: null
+    # msrp: https://www.lasportivausa.com/products/katana-lace (high, 2026-11-05)
+    msrp_usd: 239
     quadrant_x_prior: 0.50
     quadrant_y_prior: -0.60
     prior_source: hand
@@ -93,7 +100,8 @@ shoes:
     stiffness_spec: moderate
     closure: lace
     rubber: Vibram XS Grip2
-    msrp_usd: null
+    # msrp: https://steepandcheap.com/la-sportiva-testarossa-vibram-xs-grip2-climbing-shoe + outdoorplay.com (medium, 2026-11-05)
+    msrp_usd: 219
     quadrant_x_prior: 0.68
     quadrant_y_prior: -0.15
     prior_source: hand
@@ -109,7 +117,8 @@ shoes:
     stiffness_spec: stiff
     closure: velcro
     rubber: Vibram XS Edge
-    msrp_usd: null
+    # msrp: https://us.scarpa.com/products/instinct-vs-mens (high, 2026-11-05)
+    msrp_usd: 219
     quadrant_x_prior: 0.60
     quadrant_y_prior: -0.45
     prior_source: hand
@@ -126,7 +135,8 @@ shoes:
     stiffness_spec: moderate
     closure: velcro
     rubber: Vibram XS Grip
-    msrp_usd: null
+    # msrp: https://tenaya-us.com/products/oasi-unisex-climbing-shoes (high, 2026-11-05)
+    msrp_usd: 204.99
     quadrant_x_prior: 0.58
     quadrant_y_prior: -0.10
     prior_source: hand
@@ -142,6 +152,7 @@ shoes:
     stiffness_spec: stiff
     closure: velcro
     rubber: Stealth C4
+    # msrp: null, discontinued/unverified: only a gear database and a resale marketplace gave a price (170); adidas.com/us not reachable (2026-11-05)
     msrp_usd: null
     quadrant_x_prior: 0.45
     quadrant_y_prior: -0.55
@@ -162,7 +173,8 @@ shoes:
     stiffness_spec: stiff
     closure: lace
     rubber: Vibram XS Edge
-    msrp_usd: null
+    # msrp: https://www.lasportivausa.com/products/tc-pro (high, 2026-11-05)
+    msrp_usd: 239
     quadrant_x_prior: -0.35
     quadrant_y_prior: -0.70
     prior_source: hand
@@ -179,6 +191,7 @@ shoes:
     stiffness_spec: moderate-stiff
     closure: lace
     rubber: Vibram XS Edge
+    # msrp: null, discontinued in North America; successor Mythos ECO (179) is a different product (2026-11-05)
     msrp_usd: null
     quadrant_x_prior: -0.55
     quadrant_y_prior: -0.45
@@ -195,6 +208,7 @@ shoes:
     stiffness_spec: stiff
     closure: lace
     rubber: Vibram XS Edge
+    # msrp: null, discontinued; no reliable last list price (2026-11-05)
     msrp_usd: null
     quadrant_x_prior: -0.45
     quadrant_y_prior: -0.65
@@ -210,6 +224,7 @@ shoes:
     stiffness_spec: moderate-stiff
     closure: lace
     rubber: Trax SAS
+    # msrp: null, discontinued; no reliable MSRP (2026-11-05)
     msrp_usd: null
     quadrant_x_prior: -0.40
     quadrant_y_prior: -0.50
@@ -226,7 +241,8 @@ shoes:
     stiffness_spec: moderate-stiff
     closure: lace
     rubber: Vibram XS Edge
-    msrp_usd: null
+    # msrp: https://us.scarpa.com/products/vapor-men-s (high, 2026-11-05)
+    msrp_usd: 199
     quadrant_x_prior: -0.10
     quadrant_y_prior: -0.40
     prior_source: hand
@@ -242,6 +258,7 @@ shoes:
     stiffness_spec: moderate
     closure: velcro
     rubber: Vibram XS Grip2
+    # msrp: null, ambiguous version: lasportivausa.com lists Katana (2025) at 209 and Katana at 179 (2026-11-05)
     msrp_usd: null
     quadrant_x_prior: 0.20
     quadrant_y_prior: -0.30
@@ -263,7 +280,8 @@ shoes:
     stiffness_spec: stiff
     closure: lace
     rubber: Neo Fuse
-    msrp_usd: null
+    # msrp: https://www.backcountry.com/butora-altura-climbing-shoe-tight-fit-bta0009 + nextadventure.net (discontinued, last list) (medium, 2026-11-05)
+    msrp_usd: 179.95
     quadrant_x_prior: -0.50
     quadrant_y_prior: -0.55
     prior_source: hand
@@ -283,7 +301,8 @@ shoes:
     stiffness_spec: soft
     closure: velcro
     rubber: Trax SAS
-    msrp_usd: null
+    # msrp: https://www.evolvsports.com/en-us/defy-_medium-volume_-66-0000062501 (high, 2026-11-05)
+    msrp_usd: 119
     quadrant_x_prior: -0.70
     quadrant_y_prior: 0.45
     prior_source: hand
@@ -300,6 +319,7 @@ shoes:
     stiffness_spec: soft
     closure: velcro
     rubber: Trax SAS
+    # msrp: null, retailers disagree (109 vs 89); absent from evolvsports.com, likely discontinued (2026-11-05)
     msrp_usd: null
     quadrant_x_prior: -0.70
     quadrant_y_prior: 0.45
@@ -315,7 +335,8 @@ shoes:
     stiffness_spec: soft
     closure: lace
     rubber: FriXion RS
-    msrp_usd: null
+    # msrp: https://www.lasportivausa.com/products/tarantulace (high, 2026-11-05)
+    msrp_usd: 99
     quadrant_x_prior: -0.75
     quadrant_y_prior: 0.30
     prior_source: hand
@@ -330,7 +351,8 @@ shoes:
     stiffness_spec: soft
     closure: velcro
     rubber: Vision
-    msrp_usd: null
+    # msrp: https://us.scarpa.com/products/origin-men-s (high, 2026-11-05)
+    msrp_usd: 129
     quadrant_x_prior: -0.80
     quadrant_y_prior: 0.25
     prior_source: hand
@@ -345,7 +367,8 @@ shoes:
     stiffness_spec: soft
     closure: velcro
     rubber: BD Fuse
-    msrp_usd: null
+    # msrp: https://www.blackdiamondequipment.com/products/mens-momentum-climbing-shoe (high, 2026-11-05)
+    msrp_usd: 129.95
     quadrant_x_prior: -0.78
     quadrant_y_prior: 0.35
     prior_source: hand
@@ -360,6 +383,7 @@ shoes:
     stiffness_spec: very soft
     closure: slipper
     rubber: Stealth C4
+    # msrp: null, renamed: original replaced by NIAD Moccasym (125); unclear which this row means (2026-11-05)
     msrp_usd: null
     quadrant_x_prior: -0.30
     quadrant_y_prior: 0.70
@@ -375,7 +399,8 @@ shoes:
     stiffness_spec: moderate
     closure: lace
     rubber: FriXion RS
-    msrp_usd: null
+    # msrp: https://www.backcountry.com/la-sportiva-aragon-climbing-shoe-womens + campman.com (discontinued, last list) (medium, 2026-11-05)
+    msrp_usd: 129
     quadrant_x_prior: -0.60
     quadrant_y_prior: 0.15
     prior_source: hand
@@ -390,7 +415,8 @@ shoes:
     stiffness_spec: soft
     closure: velcro
     rubber: Vibram XS Grip
-    msrp_usd: null
+    # msrp: https://tenaya-us.com/products/tanta-unisex-climbing-shoes (high, 2026-11-05)
+    msrp_usd: 119.99
     quadrant_x_prior: -0.65
     quadrant_y_prior: 0.30
     prior_source: hand
@@ -410,7 +436,8 @@ shoes:
     stiffness_spec: very soft
     closure: velcro
     rubber: Vibram XS Grip2
-    msrp_usd: null
+    # msrp: https://us.scarpa.com/products/drago (high, 2026-11-05)
+    msrp_usd: 229
     quadrant_x_prior: 0.80
     quadrant_y_prior: 0.85
     prior_source: hand
@@ -429,7 +456,8 @@ shoes:
     stiffness_spec: soft
     closure: velcro
     rubber: Vibram XS Grip2
-    msrp_usd: null
+    # msrp: https://us.scarpa.com/products/instinct-vsr (high, 2026-11-05)
+    msrp_usd: 219
     quadrant_x_prior: 0.70
     quadrant_y_prior: 0.40
     prior_source: hand
@@ -447,7 +475,8 @@ shoes:
     stiffness_spec: soft
     closure: velcro
     rubber: Vibram XS Grip2
-    msrp_usd: null
+    # msrp: https://www.lasportivausa.com/products/skwama (high, 2026-11-05)
+    msrp_usd: 219
     quadrant_x_prior: 0.65
     quadrant_y_prior: 0.65
     prior_source: hand
@@ -463,7 +492,8 @@ shoes:
     stiffness_spec: soft
     closure: velcro
     rubber: Vibram XS Grip2
-    msrp_usd: null
+    # msrp: https://www.lasportivausa.com/products/solution-comp (high, 2026-11-05)
+    msrp_usd: 229
     quadrant_x_prior: 0.75
     quadrant_y_prior: 0.55
     prior_source: hand
@@ -481,7 +511,8 @@ shoes:
     stiffness_spec: soft
     closure: velcro
     rubber: Vibram XS Grip2
-    msrp_usd: null
+    # msrp: https://www.lasportivausa.com/products/theory (high, 2026-11-05)
+    msrp_usd: 219
     quadrant_x_prior: 0.72
     quadrant_y_prior: 0.60
     prior_source: hand
@@ -496,7 +527,8 @@ shoes:
     stiffness_spec: soft
     closure: velcro
     rubber: Stealth C4
-    msrp_usd: null
+    # msrp: https://www.gearx.com/products/five-ten-hiangle-womens-wq8ni-ftwwht_cblack_sigcor + steepandcheap.com (medium, 2026-11-05)
+    msrp_usd: 160
     quadrant_x_prior: 0.60
     quadrant_y_prior: 0.50
     prior_source: hand
@@ -511,7 +543,8 @@ shoes:
     stiffness_spec: moderate-soft
     closure: velcro
     rubber: Trax SAS
-    msrp_usd: null
+    # msrp: https://www.evolvsports.com/en-us/shaman-66-0000062203 (high, 2026-11-05)
+    msrp_usd: 219
     quadrant_x_prior: 0.58
     quadrant_y_prior: 0.40
     prior_source: hand
@@ -526,7 +559,8 @@ shoes:
     stiffness_spec: moderate-soft
     closure: velcro
     rubber: Vibram XS Grip
-    msrp_usd: null
+    # msrp: https://tenaya-us.com/products/iati-unisex-climbing-shoes (high, 2026-11-05)
+    msrp_usd: 209.99
     quadrant_x_prior: 0.62
     quadrant_y_prior: 0.30
     prior_source: hand
@@ -538,9 +572,27 @@ shoes:
 # -----------------------------------------------------------------------------
 # OPEN ITEMS before this seed is production-ready
 # -----------------------------------------------------------------------------
-# 1. msrp_usd is null on all 28 rows. Populate from brand sites and record a
-#    source URL per row. The section 7.6 budget gate cannot ship until this is
-#    done — a null price must not be silently treated as "within budget".
+# 1. msrp_usd is sourced for 23/30 rows (2026-11-05); 7 stay null and a null
+#    price must not be silently treated as "within budget" (the section 7.6
+#    budget gate cannot ship until these are resolved; validate.py
+#    --require-msrp fails on them). Nulls:
+#      Anasazi Pro   sources were a gear database and a resale marketplace (170)
+#      Mythos        original discontinued in NA; Mythos ECO (179) is a different shoe
+#      Maestro Mid   discontinued, no reliable last list price
+#      Astroman      discontinued, no reliable MSRP
+#      Katana Velcro ambiguous version, see spot-checks
+#      Elektra       retailers disagree (109 vs 89), likely discontinued
+#      Moccasym      renamed to NIAD Moccasym, see spot-checks
+#    Human spot-checks:
+#      - Katana Velcro: lasportivausa.com sells "Katana (2025)" at 209 and
+#        "Katana" at 179. Which shoe is this row?
+#      - Moccasym: is the row the original, or the NIAD Moccasym (125, medium)?
+#      - Anasazi Pro and Hiangle: confirm price and availability on
+#        adidas.com/us (fetches were blocked); Hiangle 160 is medium.
+#      - Testarossa: 219 is the retailer consensus, one source says 199; it is
+#        not on the La Sportiva US site.
+#      - Defy: row is gender mens, but Evolv now sells only a unisex Defy at
+#        119. The price is applied; gender is left unchanged pending a decision.
 # 2. shoe_size_map (W3-2) is empty. size_exists defaults TRUE, so the D9 hard
 #    gate currently passes everything. Fine for the thin slice; not fine once
 #    real users enter a street size.
