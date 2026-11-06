@@ -554,11 +554,16 @@ scorer (§4.13). It has four endpoints; `POST /recommend` (W7-2) ranks one surve
     requests for one token serialise. Every shoe is read with no status filter,
     because anchors must resolve against discontinued shoes; the scorer keeps
     only active candidates. Size rows are read only for the survey's street
-    size. The token is only ever a bound parameter.
+    size. The token is only ever a bound parameter. The lock wait is bounded by
+    `SET LOCAL lock_timeout = '5s'`; a timeout is an `OperationalError`, so it
+    is the masked 503.
   - **Upsert, delete, validate, commit.** Each ranked shoe is upserted on
     `(survey_id, shoe_id)`; the conflict clause rewrites only the score columns,
-    `rank`, `scorer_version` and `created_at`, so `accepted`, `satisfaction`,
-    `returned` and `feedback_at` survive a re-request. Rows for shoes the new
+    `rank`, `scorer_version` and `created_at`, never the feedback columns. A row
+    that already carries feedback (`feedback_at` set) is not updated at all
+    (`DO UPDATE … WHERE recommendation.feedback_at IS NULL`): it stays the
+    record of what the user was shown, so its stored rank and scores can differ
+    from the response. Rows for shoes the new
     ranking no longer contains are deleted unless they carry feedback. Then
     `RecommendOut` is validated (NaN and infinity rejected) and only then is the
     transaction committed, once. A validation failure becomes the generic 500
@@ -770,14 +775,14 @@ The v0 scorer behind `POST /recommend` (W3-1a and W7-2, `timeline.md` §7, §11)
     - **Fit_anchor.** A shoe's family is `(last_shape, downturn)`. Similarity is 1 − (|Δlast| + |Δdownturn|)/4 over 0/1/2 ordinals; a NULL field counts as one step. Good anchors only: the maximum similarity. Bad anchors only: 1 − the maximum. Both: the average of the two.
     - **Fit_cat** is the mean of the answered sub-scores: toe shape against last, foot width against last, and instep against closure. The tables are a domain judgement that **needs climber sign-off (W4'-3)**. `arch` and `heel_fit` are unused: the catalogue has nothing to match them against.
   - **Style** = 1 − ‖q − q\*‖₂ / (2√2), in [0, 1].
-  - **Budget** = 1 − price / (2·cap): 1.0 for a free shoe, 0.5 at the cap. A NULL price gets 0.5 and `price_unknown`, and is never treated as within budget.
+  - **Budget** = 1 − price / (2·cap): 1.0 for a free shoe, 0.5 at the cap. A NULL price gets Budget 0.5 when a cap is set (null otherwise, since the term is dropped) and `price_unknown: true` either way, and is never treated as within budget.
   - **Total** = Σ wᵢ·termᵢ / Σ wᵢ over the terms present, with α 0.45, β 0.40, γ 0.15, rounded to 4 dp before ranking.
   - **Gates**, in order, each shoe counted once at the first that drops it: size (`shoe_size_map.size_exists = FALSE` for the survey's street size; the table is empty today, so nothing is dropped), then price (a known price above the cap). Inactive shoes are excluded silently; an active shoe with no prior is counted as `unplaced`.
   - **Confidence** C = (α·c_survey + β·c_place·[q\* known]) / (α+β). c_survey = λ·[anchors resolved] + (1−λ)·(answered of `foot_width`, `toe_shape`, `instep`)/3. c_place is 0.80 for a hand placement and 0.80 × the LOOCV agreement (26/30, §4.3) for a spec one; a corpus placement raises until W3-4 defines it. Labels: high ≥ 0.70, medium ≥ 0.45, low below. Without a target C ≤ 0.53, so such a result is never labelled high (pinned by a test).
 - **Target.** The stored `goal_x_target` / `goal_y_target` are used, after validation, when both are present. When both are NULL and a discipline exists, `q*` is recomputed with `target_quadrant(discipline, terrain, level)` and the ranking warns `target_recomputed_without_goal`; since W4'-4a this reaches only rows stored before capture derived `q*`. With no discipline there is no target: Style is dropped, the ranking warns `no_target`, and the shoes are still ranked by Fit and Budget. Exactly one NULL target raises.
 - **Term exclusion.** A term with no survey-wide input is dropped and the remaining weights renormalise, so a missing input is neutral rather than zero. Its score is null on every result. With all three dropped, every total is 0.5 and the ranking carries `no_scoring_inputs`.
 - **Ordering.** Total descending, then fit descending with null last, then lower-cased brand and model, version, gender and id. Ranks are contiguous from 1. Shoes the user named are ranked by score, never hidden or forced last, and labelled `reported_good_fit` or `reported_poor_fit`.
-- **Warnings** are plain strings and never carry a shoe id. Ranking-level: `no_target`, `target_recomputed_without_goal`, `anchor_not_in_catalog:<count>`, `no_scoring_inputs`. Per result: `reported_good_fit`, `reported_poor_fit`, `catalog_field_missing:<field>`.
+- **Warnings** are plain strings and never carry a shoe id. Ranking-level: `no_target`, `target_recomputed_without_goal`, `anchor_not_in_catalog:<count>`, `no_scoring_inputs`, and `catalog_field_missing:<field>` when an anchor shoe has a NULL `last_shape` or `downturn`. Per result: `reported_good_fit`, `reported_poor_fit`, `catalog_field_missing:<field>`.
 - **Ranking shape** (`RecommendOut`): top level `scorer_version`, `target`, `terms` (`{fit, style, budget}`, whether each term was used), `gated_out` (`{over_budget, size_unavailable, unplaced}`), `warnings`, `results`. Each result has the `QuadrantShoeOut` fields plus `msrp_usd`, `price_unknown`, `fit_score`, `style_score`, `budget_score` (each null when its term is dropped), `total_score`, `confidence`, `confidence_label`, `rank` and `warnings`.
 - **Persona fixtures** (`test_recommend_personas.py`, 16 tests) run on the real `shoes.yaml` and change no constant. They are a developer sanity check, **not** W3-1's climber check, which has not been done:
   - sport with an overhang: Solution and Instinct VS above TC Pro, top result in Q1;
@@ -786,6 +791,8 @@ The v0 scorer behind `POST /recommend` (W3-1a and W7-2, `timeline.md` §7, §11)
   - Solution as a good anchor with a target: it ranks first at fit 1.0. With Solution as the only anchor and no target, 8 shoes tie at fit 1.0 (pinned): last families are coarse;
   - an empty survey: every confidence is low.
 - **Unit tests:** `test_score.py` (75), `test_fit.py` (47), `test_style.py` (21), `test_confidence.py` (33), `test_scorer_config.py` (19). Known gaps are in §12.
+- **Known availability limit: one corrupt active catalogue row fails every request.** The scorer does not skip a bad row: a `corpus` prior (until W3-4), an on-axis prior or an unknown `last_shape` (once Fit is scored) raises, so every `POST /recommend` is the masked 500 until the row is fixed. This is deliberate, since skipping would hide a catalogue bug and change rankings silently, and it is pinned by `test_recommend_one_bad_active_shoe_fails_the_whole_request_loudly`. `validate.py` and the seed are meant to be the guard, but today only the on-axis prior is rejected there: `prior_source: corpus` passes both `validate.py` and the schema CHECK, and `last_shape` has no rule in either (§12).
+- **c_survey feeds C only.** §7.2 has a survey-fit confidence discounting Fit; as built, c_survey enters the confidence C and does not discount the Fit score (`timeline.md` §13).
 
 ---
 
@@ -951,7 +958,7 @@ dropped. A caller-supplied target is a 422.
 1. `POST /recommend` (§4.9) locks the survey row and reads every shoe and the survey's street-size rows, on one connection.
 2. `score.recommend()` (§4.13) reads the stored `q*` (§6.4), applies the size and price gates, and for each active, placed shoe computes Fit, Style and Budget and their weighted total. A term with no input is dropped and the rest renormalise.
 3. Each result gets a confidence from the survey and its `prior_source` (hand 0.80, spec 0.80 × the LOOCV agreement) and a high/medium/low label. Mention count and agreement are not inputs until W3-4.
-4. The ranking is upserted as `recommendation` rows under `scorer_version` `v0-slice`, keeping any feedback columns; rows no longer ranked are deleted unless they carry feedback. The response is validated, then the transaction commits once.
+4. The ranking is upserted as `recommendation` rows under `scorer_version` `v0-slice`; a row that carries feedback is left exactly as it was, and rows no longer ranked are deleted unless they carry feedback. The response is validated, then the transaction commits once.
 
 Not yet implemented: the results page and its `/api/recommend` route handler (W6-3), the sizing map (W3-2), corpus-backed confidence and its display contract (W3-4), and learned ranking from feedback (`timeline.md` §13).
 
@@ -994,7 +1001,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 - **Non-commercial and advertising-free** (D11). The product carries no advertising. Using free API tiers under non-commercial terms constrains future monetisation for as long as that data is in use.
 - **Privacy by construction** (D4). No images, no biometrics, no personal identifiers; author identity exists only as a keyed pseudonym.
 - **`q*` has a single author** (decided 2026-10-02, `timeline.md` v3.3). The survey layer computes the user's target when a survey is saved and stores it with the raw answers and a mapping version. Clients cannot supply it, and the scorer reads it (except for rows stored before W4'-4a, which it recomputes without the goal, §4.13). One author means a survey's target never shifts silently when the mapping constants change, and a stored target can always be audited against its inputs. *(Partly built: capture derives `q*` and refuses client targets (W4'-4a, part); the raw answer and mapping version wait for the rest of W4'-4a and W4'-4b.)*
-- **The first results are a style match** (decided 2026-10-02). The v0 scorer ranks by quadrant proximity only, and labels fit and budget as not assessed rather than inventing them. Results are written once, so later feedback (§9.4) stays tied to what each user actually saw. **Superseded in part on 2026-11-06** (`timeline.md` §13): the scorer as built also assesses Fit (anchor families plus a judgement Fit_cat table pending climber sign-off) and Budget, computes confidence, and upserts its rows on re-request while preserving feedback (§4.13). The user kept it as built. *(Built: W3-1a, W7-2; the results page is W6-3.)*
+- **The first results are a style match** (decided 2026-10-02). The v0 scorer ranks by quadrant proximity only, and labels fit and budget as not assessed rather than inventing them. Results are written once, so later feedback (§9.4) stays tied to what each user actually saw. **Superseded in part on 2026-11-06** (`timeline.md` §13): the scorer as built also assesses Fit (anchor families plus a judgement Fit_cat table pending climber sign-off) and Budget, computes confidence, and upserts its rows on re-request; a row with feedback is frozen, so feedback still stays tied to what the user saw (§4.9). The user kept it as built. *(Built: W3-1a, W7-2; the results page is W6-3.)*
 - **The browser never reaches the service layer directly** (decided 2026-09-21, `timeline.md` §6). The data path is browser → Next.js route handler → FastAPI on localhost → PostgreSQL. Both ends are implemented: FastAPI without CORS middleware (§4.9), and three Next.js route handlers that relay server-side (§4.11). The frontend talks only to its own origin, so there is no CORS surface and the backend is not addressable from the client. The alternative — querying PostgreSQL from TypeScript — was rejected because it would duplicate the anchor resolution, allow-lists and domain guards that already exist and are tested in Python, leaving two validators to keep in step.
 
 ---
@@ -1048,7 +1055,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 
 ### 9.3 Reliability and idempotency
 - **Catalogue load:** idempotent upsert with stable UUIDs; alias replacement that doesn't depend on order; a single transaction.
-- **Recommendation:** `POST /recommend` is idempotent for an unchanged survey and catalogue: it upserts on `(survey_id, shoe_id)`, never touches the feedback columns, and commits once (§4.9).
+- **Recommendation:** `POST /recommend` is idempotent for an unchanged survey and catalogue: it upserts on `(survey_id, shoe_id)`, never updates a row that carries feedback, and commits once (§4.9).
 - **Collection:**
   - document inserts are idempotent
   - quota is reserved atomically, persisted across processes, and consumed by failed requests
@@ -1057,7 +1064,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 
 ### 9.4 Reproducibility
 - Prior weights are checked in and can be regenerated with `priors.py --refit`.
-- `recommendation.scorer_version` ties each result to a weight configuration. The scorer writes `SCORER_VERSION` (`v0-slice`, §4.13) on every row, and changing any scorer constant means bumping it. A re-request overwrites a row's scores and version in place, so earlier scores are not kept (`timeline.md` §13).
+- `recommendation.scorer_version` ties each result to a weight configuration. The scorer writes `SCORER_VERSION` (`v0-slice`, §4.13) on every row, and changing any scorer constant means bumping it. A re-request overwrites the scores and version of rows without feedback in place, so their earlier scores are not kept; rows with feedback keep theirs (`timeline.md` §13).
 - The migration pair is reversible and can be re-applied.
 
 ---
@@ -1216,7 +1223,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
     over-large integer `goal`; read-only tables; the import-time invariant check
     fails for bad constants, including under `python -O`
   - golden values with hand-checked arithmetic
-- **`backend/tests/test_api.py`** — 150 tests (135 pass and 15 skip without a
+- **`backend/tests/test_api.py`** — 156 tests (140 pass and 16 skip without a
   database), through FastAPI's
   `TestClient`. Hermetic tests swap `get_conn` / `get_catalog` for fakes or a
   static catalogue; some keep the real `get_conn` and stub only `psycopg.connect`.
@@ -1226,9 +1233,12 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
     a 422 with the fixed message that opens no connection and runs no SQL; an
     unknown token is a 404 that never commits; the survey select binds the
     token and locks the row; no SQL text, response or log line contains the
-    token; the upsert never writes a feedback column, and the delete spares
+    token; the lock wait is bounded first and a lock timeout is the masked
+    503; the upsert never writes a feedback column, and the delete spares
     rows with feedback; a scorer error or a response that fails validation
-    never commits; a success commits exactly once
+    never commits; one corrupt active shoe (corpus prior, on-axis prior,
+    unknown `last_shape`) is the masked 500 for the whole request; a success
+    commits exactly once
   - no validation of its own: a multi-error payload, and a 12-case parity
     table, each assert that the 422 list *equals* `build_survey_row()`'s list
     and that nothing is written. The OpenAPI operation for `/survey` must
@@ -1260,13 +1270,13 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   `QuadrantShoe` match `ShoeOut` and `QuadrantShoeOut`, and `PriorSource` and
   `Quadrant` match the API's literals. Three self-tests keep the parser from
   passing vacuously.
-- **Database-backed tests are opt-in by reachability.** Twenty-five tests (ten in
-  `test_survey.py`, fifteen in `test_api.py`) use a live PostgreSQL when one is
+- **Database-backed tests are opt-in by reachability.** Twenty-six tests (ten in
+  `test_survey.py`, sixteen in `test_api.py`) use a live PostgreSQL when one is
   available, and skip cleanly when it is not, so the default suite stays
   hermetic.
   - **Every one that writes, except those below,** rolls back and asserts it left `user_survey` empty. The three `GET /quadrant` tests only read.
   - **The exceptions** are `test_api.py`'s `POST /survey` persistence test and
-    the seven `/recommend` persistence tests (`test_db_recommend_*`).
+    the eight `/recommend` persistence tests (`test_db_recommend_*`).
     Persistence can only be shown by a real commit, observed from a second
     connection, so they commit and then delete their survey row
     unconditionally; its `recommendation` rows go with it through
@@ -1283,7 +1293,7 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   - The migration apply/reverse check is automated here; `SETUP.md` §3 remains the manual procedure for a local database.
 - **Scorer test files** (§4.13): `test_score.py` (75), `test_fit.py` (47), `test_style.py` (21), `test_confidence.py` (33), `test_scorer_config.py` (19) and `test_recommend_personas.py` (16). None needs a database.
 - **Stub test files:** `test_aggregate.py`, `test_calibration.py`.
-- **Total:** backend 2,003 passed with a seeded PostgreSQL 16.15, and 1,978 passed plus 25 skipped without one (measured 2026-11-06 on W7-2). Frontend: 254 Vitest tests and 24 Playwright tests (unchanged by W7-2; Vitest and lint re-run on W7-2).
+- **Total:** backend 2,009 passed with a seeded PostgreSQL 16.15, and 1,983 passed plus 26 skipped without one (measured 2026-11-06 on W7-2). Frontend: 254 Vitest tests and 24 Playwright tests (unchanged by W7-2; Vitest and lint re-run on W7-2).
 
 ---
 
@@ -1352,8 +1362,9 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
   - `arch` and `heel_fit` are collected but unused.
   - A result with no target can never be labelled high (by design, §4.13).
   - No rate limit on `POST /recommend`; it belongs in the relay when W6-3 forwards it.
-  - A kept feedback row whose shoe drops out of the ranking keeps the rank and scores of the earlier request.
-  - Re-requests overwrite scores and `scorer_version` in place, so a scorer upgrade loses the earlier scores, and rows do not record the placement used.
+  - A row with feedback is frozen: it keeps the rank, scores and `scorer_version` it had when the feedback was given, so its stored rank can collide with or skip the ranks of a later response.
+  - Re-requests overwrite the scores and `scorer_version` of rows without feedback in place, so a scorer upgrade loses those earlier scores, and rows do not record the placement used.
+  - One corrupt active catalogue row makes every `POST /recommend` a 500 (§4.13). `validate.py` does not reject `prior_source: corpus` or an unknown `last_shape`, and the schema has no CHECK for either.
 - **Stale stub docstrings** in `catalog/sizing.py`, `eval/gearlab_map.py`, `scraping/mentions.py` and `db/models.py` contradict the current design (§7).
 - **Broken references:** `db/models.py` and `scaffold.sh` cite `PROJECT_PLAN.md`, which does not exist; the plan of record is `timeline.md`.
 - **Legacy dead code:** `backend/scraping/` (`compile.py`, `sources.py`, `NLP_training_data.txt`) and `backend/NLP/` (`processing/NLP.py`, `training/trainer.py`) are empty files from an earlier layout, duplicated by `backend/app/`.
@@ -1390,16 +1401,16 @@ The decisions that shape the structure, in brief. Full rationale is in `timeline
 These commands re-check the mechanically verifiable claims in this document:
 
 ```bash
-python3 -m pytest backend/tests/ -q                              # 2003 passed with a migrated, seeded database (tests commit and delete rows: use a scratch database)
+python3 -m pytest backend/tests/ -q                              # 2009 passed with a migrated, seeded database (tests commit and delete rows: use a scratch database)
 python3 -m pytest backend/tests/test_collector.py -q             # 25 passed
 python3 -m pytest backend/tests/test_priors.py -q                # 86 passed
 python3 -m pytest backend/tests/test_survey.py -q                # 168 passed, 10 skipped without a database (178 with one)
 python3 -m pytest backend/tests/test_preferences.py -q           # 1334 passed
-python3 -m pytest backend/tests/test_api.py -q                   # 135 passed, 15 skipped without a database (150 with one)
+python3 -m pytest backend/tests/test_api.py -q                   # 140 passed, 16 skipped without a database (156 with one)
 python3 -m pytest backend/tests/test_frontend_contract.py -q     # 19 passed
 python3 -m pytest backend/tests/test_score.py backend/tests/test_fit.py backend/tests/test_style.py backend/tests/test_confidence.py backend/tests/test_scorer_config.py backend/tests/test_recommend_personas.py -q   # 211 passed
 DATABASE_URL=postgresql://localhost:1/nope \
-  python3 -m pytest backend/tests/ -q                            # 1978 passed, 25 skipped — the suite is hermetic
+  python3 -m pytest backend/tests/ -q                            # 1983 passed, 26 skipped — the suite is hermetic
 (cd backend && uvicorn app.main:app --port 8000) &                # then, in another shell:
 curl -s localhost:8000/shoes | python3 -c "import json,sys; print(sorted(json.load(sys.stdin)[0]))"   # ['brand', 'gender', 'id', 'model', 'version']
 curl -s localhost:8000/quadrant | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d), sum(r['is_anchor'] for r in d))"   # 30 5 (seeded catalogue)

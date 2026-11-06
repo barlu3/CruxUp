@@ -154,7 +154,7 @@ prints what is wrong and touches nothing.
 ## 6. Verify
 
 ```bash
-python3 -m pytest backend/tests/ -q        # 2003 passed with a seeded database; 1978 passed, 25 skipped without one
+python3 -m pytest backend/tests/ -q        # 2009 passed with a seeded database; 1983 passed, 26 skipped without one
 python3 backend/app/catalog/validate.py    # catalogue invariants
 python3 backend/app/catalog/priors.py      # spec model vs hand placements
 ```
@@ -169,8 +169,9 @@ for f in ['backend/app/db/migrations/0001_init.sql',
     print(f, len(parse_sql(open(f).read())), 'statements OK')"
 ```
 
-The 25 DB-backed tests run only when `DATABASE_URL` reaches a database that is
-migrated (§3) and seeded (§5); otherwise they skip. They **write**: the
+The 26 DB-backed tests skip only when `DATABASE_URL` cannot be reached. They
+assume a migrated (§3) and seeded (§5) database: against an unseeded one, the
+anchor and `/recommend` tests skip, and the `GET /shoes` tests fail. They **write**: the
 `POST /survey` and `/recommend` persistence tests commit rows and then delete
 them, so point `DATABASE_URL` at a scratch database, not the one the API uses.
 
